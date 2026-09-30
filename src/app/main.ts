@@ -102,8 +102,21 @@ function boot(): void {
     renderer.resize(size.width, size.height);
     labels.place(renderer.geometry(), dpr);
   };
+  // A window dragged to a screen with another scale changes the pixel ratio
+  // without resizing the canvas box, so the observer alone would miss it.
+  const watchPixelRatio = (): void => {
+    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
+      "change",
+      () => {
+        resize();
+        watchPixelRatio();
+      },
+      { once: true },
+    );
+  };
   if (renderer) {
     new ResizeObserver(resize).observe(canvas);
+    watchPixelRatio();
     resize();
   }
 
