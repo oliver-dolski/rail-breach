@@ -11,6 +11,20 @@ export type Action =
   | { type: "noop" }
   | { type: "technique.launch"; technique: string; target: string };
 
+/** Runtime guard for untrusted input such as a parsed recording. Extend with the union. */
+export function isAction(value: unknown): value is Action {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  switch (v.type) {
+    case "noop":
+      return true;
+    case "technique.launch":
+      return typeof v.technique === "string" && typeof v.target === "string";
+    default:
+      return false;
+  }
+}
+
 /** Placeholder success chance until the rule engine derives it from content. */
 const PLACEHOLDER_SUCCESS_PERMILLE = 700;
 
