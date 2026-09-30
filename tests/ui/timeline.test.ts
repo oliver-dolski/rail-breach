@@ -239,6 +239,24 @@ describe("the timeline on the page", () => {
     expect(byId.get("tl-band-attacker")?.hidden).toBe(true);
   });
 
+  it("does not reuse a mark element for a different mark after a scenario switch", () => {
+    const { doc, byId } = fakeDocument();
+    const view = createTimelineView(doc);
+    const tl = new Timeline(names);
+    tl.ingest([started(150, "T0865", "corp-ws-dispatch")], START);
+    view.update(tl.model(world, START, LENGTH), world);
+    const old = byId.get("tl-attacker")?.children[0];
+    tl.reset();
+    tl.ingest([{ k: "breach.assumed", tick: START, node: "mws-vel" }], START);
+    view.update(tl.model(world, START, LENGTH), world);
+
+    const marks = byId.get("tl-attacker")?.children ?? [];
+    expect(marks.length).toBe(1);
+    expect(marks[0]).not.toBe(old);
+    expect(marks[0]?.attrs.class).toBe("tl-mark tl-breach");
+    expect(marks[0]?.attrs.title).toContain("Assumed breach");
+  });
+
   it("is a reader of events and snapshots: no markup sink and no engine import in its source", () => {
     const code = readFileSync("src/ui/panel/timeline.ts", "utf8");
     expect(code).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);

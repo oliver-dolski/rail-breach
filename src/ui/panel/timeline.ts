@@ -69,12 +69,15 @@ const clampPermille = (tick: number, length: number): number =>
 export class Timeline {
   private readonly raw: (Omit<Mark, "permille"> & { order: number })[] = [];
   private seq = 0;
+  /** Bumped on every reset, so the keys of one session never collide with the next one's. */
+  private generation = 0;
 
   constructor(private readonly names: Names) {}
 
   reset(): void {
     this.raw.length = 0;
     this.seq = 0;
+    this.generation++;
   }
 
   private technique(id: string): string {
@@ -84,7 +87,15 @@ export class Timeline {
 
   private add(lane: Lane, kind: MarkKind, tick: number, technique: string, label: string): void {
     const order = this.seq++;
-    this.raw.push({ key: `m${order}`, order, lane, kind, tick, technique, label });
+    this.raw.push({
+      key: `g${this.generation}m${order}`,
+      order,
+      lane,
+      kind,
+      tick,
+      technique,
+      label,
+    });
   }
 
   ingest(events: readonly SimEvent[], startTick: number): void {
