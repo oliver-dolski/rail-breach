@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { techniques } from "../../src/content/techniques";
 import type { Content } from "../../src/content/types";
 import { ContentError, validateContent } from "../../src/content/validate";
 import { stateHash } from "../../src/core/hash";
@@ -6,10 +7,12 @@ import { assertRecording, RECORDING_SCHEMA, type Recording } from "../../src/cor
 import { createRunner, ReplayMismatchError } from "../../src/core/replay/runner";
 import { RecordedSource } from "../../src/core/replay/source";
 import type { Action } from "../../src/core/sim/actions";
+import { buildIndex } from "../../src/core/sim/model";
 import { createWorld } from "../../src/core/sim/world";
 import { tinyTopology } from "../fixtures/tiny-topology";
 
 const SEED = 4242;
+const index = buildIndex(tinyTopology, { techniques });
 
 function bareRecording(actions: Recording["actions"], durationTicks: number): Recording {
   return {
@@ -26,7 +29,11 @@ function bareRecording(actions: Recording["actions"], durationTicks: number): Re
 /** Records a session: runs the engine over the actions and captures its checkpoints. */
 function record(actions: Recording["actions"], durationTicks: number): Recording {
   const bare = bareRecording(actions, durationTicks);
-  const runner = createRunner(createWorld(tinyTopology, bare.seed), new RecordedSource(bare));
+  const runner = createRunner(
+    createWorld(tinyTopology, bare.seed),
+    new RecordedSource(bare),
+    index,
+  );
   runner.advance(durationTicks);
   return { ...bare, checkpoints: [...runner.checkpoints()] };
 }
@@ -49,6 +56,7 @@ function replay(recording: Recording, chunks: number[]): string {
   const runner = createRunner(
     createWorld(tinyTopology, recording.seed),
     new RecordedSource(recording),
+    index,
   );
   for (const n of chunks) runner.advance(n);
   return stateHash(runner.view());

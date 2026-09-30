@@ -1,0 +1,93 @@
+import type { NodeKind, Protocol } from "../../content/types";
+
+/**
+ * The attack vocabulary. Techniques are data interpreted by one engine, so the
+ * interface can explain a rejection ("needs a permitted remote-services path")
+ * and a reviewer can audit every possible consequence in one short union.
+ */
+
+export type TechniqueId = string;
+
+/** Tactic labels as ATT&CK for ICS v19.2 names them. Extended as the catalogue grows. */
+export type TacticId = "initial-access" | "lateral-movement" | "discovery";
+
+/** 1 is a user-level foothold, 2 admin or system. Matches NodeState.integrity. */
+export type Privilege = 1 | 2;
+
+/** Which nodes a technique may be aimed at. Every given field must match. */
+export interface NodeSelector {
+  kinds?: NodeKind[];
+  roles?: string[];
+  tags?: string[];
+}
+
+/**
+ * What must hold before a technique may launch. Data, not closures, so a
+ * refusal can be reported in words.
+ */
+export type Precondition =
+  /** A permitted path for `protocol` from the attacker's origin to the target. */
+  | { k: "reach"; from: "external" | "foothold"; protocol: Protocol }
+  /** The attacker already holds the target node. */
+  | { k: "targetFoothold"; min: Privilege }
+  /** The attacker has already enumerated the target. */
+  | { k: "targetDiscovered" };
+
+/**
+ * Everything a technique can do to the world. The union is restrictive by
+ * construction: each member only adds attacker knowledge or takes something
+ * away from the operators. There is deliberately no member that could clear a
+ * lock, show a proceed aspect, move a point or move a train, and applyEffect
+ * touches nothing but the four cyber fields of a NodeState.
+ *
+ * `onTag` limits an effect to targets carrying that tag.
+ */
+export type Effect =
+  | { k: "foothold"; priv: Privilege }
+  | { k: "discover"; hops: number }
+  | { k: "blockCommands"; onTag?: string }
+  | { k: "denyControl"; onTag?: string };
+
+export type EffectKind = Effect["k"];
+
+/** How much of the target's own defences the success roll must beat. */
+export type Resistance = "none" | "host" | "host-and-user";
+
+export interface TechniqueDef {
+  /** Current ATT&CK for ICS ID. */
+  id: TechniqueId;
+  /** The ID this technique had before the v19 restructuring, when it had another. */
+  legacyId?: string;
+  name: string;
+  tactic: TacticId;
+  /** What crosses the links. Null means the technique runs on one node and needs no path. */
+  protocol: Protocol | null;
+  targets: NodeSelector;
+  pre: Precondition[];
+  /** Ticks the payload spends working on the target once it arrived: [min, max]. */
+  durationTicks: [number, number];
+  /** Base success chance before the target's resistance is applied. Permille. */
+  successPermille: number;
+  resistance: Resistance;
+  effects: Effect[];
+  /** One sentence for the log and tooltips. */
+  explain: string;
+}
+
+/**
+ * One running technique. Plain JSON, lives in World. While hop < path.length - 1
+ * the payload is crossing links[hop] and arrives at path[hop + 1] on `doneAt`;
+ * on the last node it works until `doneAt` and then the success roll decides.
+ */
+export interface Op {
+  /** Sequence number, also the dice key that separates simultaneous operations. */
+  id: number;
+  technique: TechniqueId;
+  target: string;
+  /** Node ids from the origin to the target, both included. */
+  path: string[];
+  /** Link ids between consecutive nodes of `path`. */
+  links: string[];
+  hop: number;
+  doneAt: number;
+}

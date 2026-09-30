@@ -12,6 +12,7 @@ export const CHECKPOINT_INTERVAL_TICKS = 100;
 
 /** Dice purposes: separate substreams, so unrelated rolls never share draws. */
 export const PURPOSE_TECHNIQUE_SUCCESS = 1;
+export const PURPOSE_OP_DURATION = 2;
 
 /** Rolling stock: one fixed train length keeps occupancy arithmetic trivial. */
 export const TRAIN_LENGTH_DM = 1000;

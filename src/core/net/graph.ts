@@ -12,6 +12,8 @@ export interface NetIndex {
   nodes: string[];
   /** Neighbours of each node, sorted by (neighbour id, link id) so searches are deterministic. */
   adjacency: Map<string, Neighbour[]>;
+  /** Every link by id, for code that walks a stored path. */
+  linkById: Map<string, LinkDef>;
 }
 
 export interface NetPath {
@@ -32,9 +34,11 @@ export function buildNetIndex(content: Pick<Content, "nodes" | "links">): NetInd
   const nodes = content.nodes.map((n) => n.id).sort();
   const known = new Set(nodes);
   const adjacency = new Map<string, Neighbour[]>();
+  const linkById = new Map<string, LinkDef>();
   for (const id of nodes) adjacency.set(id, []);
   for (const link of content.links) {
     if (!known.has(link.a) || !known.has(link.b)) continue;
+    linkById.set(link.id, link);
     adjacency.get(link.a)?.push({ node: link.b, link });
     adjacency.get(link.b)?.push({ node: link.a, link });
   }
@@ -43,7 +47,7 @@ export function buildNetIndex(content: Pick<Content, "nodes" | "links">): NetInd
       x.node !== y.node ? (x.node < y.node ? -1 : 1) : x.link.id < y.link.id ? -1 : 1,
     );
   }
-  return { nodes, adjacency };
+  return { nodes, adjacency, linkById };
 }
 
 /** Every node reachable from any start node. */

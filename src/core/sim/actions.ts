@@ -1,6 +1,5 @@
+import { launchTechnique } from "../attack/ops";
 import { enqueueRequest } from "../rail/interlocking";
-import { chance } from "../rng";
-import { PURPOSE_TECHNIQUE_SUCCESS } from "./constants";
 import type { SimEvent } from "./events";
 import type { Index } from "./model";
 import type { World } from "./world";
@@ -34,9 +33,6 @@ export function isAction(value: unknown): value is Action {
   }
 }
 
-/** Placeholder success chance until the rule engine derives it from content. */
-const PLACEHOLDER_SUCCESS_PERMILLE = 700;
-
 /**
  * Applies one action to a world that step() has already cloned. `tick` is the
  * tick this step produces; it stamps events and keys the dice.
@@ -59,24 +55,15 @@ export function applyAction(
       return;
     }
     case "technique.launch": {
-      const node = world.nodes.find((n) => n.id === action.target);
-      if (node === undefined) {
+      if (!world.nodes.some((n) => n.id === action.target)) {
         events.push({ k: "action.rejected", tick, reason: "unknown-node" });
         return;
       }
-      const ok = chance(
-        PLACEHOLDER_SUCCESS_PERMILLE,
-        world.seed,
-        tick,
-        node.key,
-        PURPOSE_TECHNIQUE_SUCCESS,
-      );
-      if (ok) {
-        if (node.integrity < 1) node.integrity = 1;
-        events.push({ k: "technique.succeeded", tick, technique: action.technique, node: node.id });
-      } else {
-        events.push({ k: "technique.failed", tick, technique: action.technique, node: node.id });
+      if (index === undefined) {
+        events.push({ k: "action.rejected", tick, reason: "no-index" });
+        return;
       }
+      launchTechnique(world, action, tick, events, index);
       return;
     }
   }

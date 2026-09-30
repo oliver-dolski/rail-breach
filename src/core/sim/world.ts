@@ -1,4 +1,5 @@
 import type { Content, NodeKind, PointPos } from "../../content/types";
+import type { Op } from "../attack/types";
 import { internKey } from "../rng";
 
 /**
@@ -97,6 +98,10 @@ export interface World {
   trains: TrainState[];
   points: PointState[];
   services: ServiceState[];
+  /** Attack operations in flight, in launch order. */
+  ops: Op[];
+  /** Number of operations ever launched; the next operation gets this id. */
+  opSeq: number;
   /** Sections the interlocking must treat as occupied (restrictive input, sorted). */
   disturbed: string[];
   /** Signals forced dark by a failed object controller (restrictive input, sorted). */
@@ -140,6 +145,8 @@ export function createWorld(content: Content, seed: number): World {
     trains: [],
     points,
     services,
+    ops: [],
+    opSeq: 0,
     disturbed: [],
     darkSignals: [],
   };
@@ -159,6 +166,8 @@ export function cloneWorld(world: World): World {
     trains: world.trains.map((t) => ({ ...t })),
     points: world.points.map((p) => ({ ...p })),
     services: world.services.map((s) => ({ ...s })),
+    ops: world.ops.map((o) => ({ ...o, path: [...o.path], links: [...o.links] })),
+    opSeq: world.opSeq,
     disturbed: [...world.disturbed],
     darkSignals: [...world.darkSignals],
   };

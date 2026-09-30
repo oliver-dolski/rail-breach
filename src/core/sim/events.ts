@@ -1,3 +1,5 @@
+import type { EffectKind } from "../attack/types";
+
 /** What a signal shows. Dark means the lamp is out, which drivers treat as stop. */
 export type Aspect = "proceed" | "caution" | "stop" | "dark";
 
@@ -8,9 +10,36 @@ export type StopCause = "signal" | "station" | "terminus" | "overrun";
  * never persisted in recordings: a recording holds only the inputs.
  */
 export type SimEvent =
-  | { k: "technique.succeeded"; tick: number; technique: string; node: string }
-  | { k: "technique.failed"; tick: number; technique: string; node: string }
-  | { k: "action.rejected"; tick: number; reason: "unknown-node" }
+  /** The operation finished on `node` and its effects were applied. */
+  | { k: "technique.succeeded"; tick: number; op: number; technique: string; node: string }
+  /** The operation finished on `node` and the roll went against the attacker. */
+  | { k: "technique.failed"; tick: number; op: number; technique: string; node: string }
+  | { k: "action.rejected"; tick: number; reason: "unknown-node" | "no-index" }
+  /** A launch that did not meet its preconditions, with each failed one in words. */
+  | { k: "technique.rejected"; tick: number; technique: string; target: string; reasons: string[] }
+  | { k: "op.started"; tick: number; op: number; technique: string; target: string; from: string }
+  /** One hop: the payload leaves `from` now and arrives at `to` on `arriveTick`. */
+  | {
+      k: "packet";
+      tick: number;
+      op: number;
+      technique: string;
+      link: string;
+      from: string;
+      to: string;
+      arriveTick: number;
+    }
+  /** The link a payload needed stopped permitting its protocol; the operation ends. */
+  | { k: "op.blocked"; tick: number; op: number; technique: string; link: string; at: string }
+  /** A finished operation changed the state of `node`. */
+  | {
+      k: "effect.applied";
+      tick: number;
+      op: number;
+      technique: string;
+      node: string;
+      effect: EffectKind;
+    }
   | {
       k: "command.rejected";
       tick: number;

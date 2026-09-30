@@ -223,9 +223,11 @@ export const links: LinkDef[] = [
   link("l-dc-office", "corp-dc", "corp-ws-office", ["directory"], 2),
   // Vendor access
   link("l-vpn-jump", "vpn-gw", "vendor-jump", ["remote-services"], 2),
-  // Control centre
-  link("l-tms-hmi1", "tms-server", "dispatch-hmi-1", ["scada-proto"], 2),
-  link("l-tms-hmi2", "tms-server", "dispatch-hmi-2", ["scada-proto"], 2),
+  // Control centre. The consoles are thin clients that open a remote display
+  // session on the traffic management server, hence remote-services next to
+  // the supervisory protocol.
+  link("l-tms-hmi1", "tms-server", "dispatch-hmi-1", ["scada-proto", "remote-services"], 2),
+  link("l-tms-hmi2", "tms-server", "dispatch-hmi-2", ["scada-proto", "remote-services"], 2),
   link("l-tms-hist", "tms-server", "historian", ["historian-feed"], 2),
   link("l-tms-fep", "tms-server", "fep", ["scada-proto"], 2),
   link("l-tms-eng", "tms-server", "ctrl-eng-ws", ["remote-services"], 2),

@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { techniques } from "../../src/content/techniques";
 import { canonicalStringify, fnv1a32, stateHash } from "../../src/core/hash";
 import { chance, roll32 } from "../../src/core/rng";
 import type { Action } from "../../src/core/sim/actions";
 import type { SimEvent } from "../../src/core/sim/events";
+import { buildIndex } from "../../src/core/sim/model";
 import { step } from "../../src/core/sim/step";
 import { createWorld, type World } from "../../src/core/sim/world";
 import { tinyTopology } from "../fixtures/tiny-topology";
 
 const SEED = 20260930;
+
+/** Enough of an index for cyber-only steps: the net graph and the technique catalogue. */
+const index = buildIndex(tinyTopology, { techniques });
 
 /** A busy but fixed action schedule: one launch every 25 ticks, alternating targets. */
 function actionsAt(tick: number): Action[] {
@@ -20,7 +25,7 @@ function run(world: World, from: number, to: number): { world: World; events: Si
   let current = world;
   const events: SimEvent[] = [];
   for (let tick = from + 1; tick <= to; tick++) {
-    const result = step(current, actionsAt(tick));
+    const result = step(current, actionsAt(tick), index);
     current = result.world;
     events.push(...result.events);
   }

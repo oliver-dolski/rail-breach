@@ -1,3 +1,4 @@
+import { stepOps } from "../attack/ops";
 import { stepCtc, stepTimetable } from "../rail/ctc";
 import { deriveAspects, stepInterlocking } from "../rail/interlocking";
 import { assertInvariants } from "../rail/invariants";
@@ -36,6 +37,7 @@ export function step(world: World, dueActions: readonly Action[], index?: Index)
   for (const action of dueActions) applyAction(next, action, tick, events, index);
 
   if (index !== undefined) {
+    stepOps(next, index, events);
     stepInterlocking(next, index, events);
     stepTimetable(next, index, events);
     stepCtc(next, index, events);
