@@ -19,7 +19,7 @@ const path = (pts: readonly Pt[]): string => pts.map((p) => `${num(p.x)},${num(p
 const STILL = {
   compromised: ["corp-ws-dispatch", "dmz-relay", "dispatch-hmi-1"],
   lost: ["tms-server"],
-  stopSignals: ["S-L1-dn", "S-L2-dn", "S-BR-up", "S-L3-up", "S-TAV-up", "S-CRE-up"],
+  proceedSignals: ["S-HAR-dn", "S-DUN-up", "S-L4-dn"],
   trains: [
     { block: "L2_dn", at: 0.55 },
     { block: "L3_up", at: 0.4 },
@@ -121,7 +121,7 @@ export function buildFallbackSvg(layout: Layout, content: Content): string {
     const len = Math.hypot(end.x - prev.x, end.y - prev.y) || 1;
     const dx = (end.x - prev.x) / len;
     const dy = (end.y - prev.y) / len;
-    const stop = (STILL.stopSignals as readonly string[]).includes(signal.id);
+    const stop = !(STILL.proceedSignals as readonly string[]).includes(signal.id);
     const color = stop ? SIGNAL_COLORS.stop : SIGNAL_COLORS.proceed;
     add(
       `<circle cx="${num(end.x - dy * 14)}" cy="${num(end.y + dx * 14)}" r="4.6" fill="${cssColor(color)}" filter="url(#glow)"/>`,
@@ -149,7 +149,7 @@ export function buildFallbackSvg(layout: Layout, content: Content): string {
   }
 
   add(
-    `<text x="24" y="${layout.height - 14}" fill="${cssColor(NEUTRAL.zoneLabel)}" font-family="monospace" font-size="12">Still image. Fictional network and railway. A phishing chain reaches the traffic management server; the interlockings refuse new routes and trains stop at red signals.</text>`,
+    `<text x="24" y="${layout.height - 7}" fill="${cssColor(NEUTRAL.zoneLabel)}" font-family="monospace" font-size="12">Still image. Fictional network and railway. A phishing chain reaches the traffic management server; the interlockings refuse new routes and trains stop at red signals.</text>`,
   );
   add("</svg>");
   return `${out.join("\n")}\n`;
