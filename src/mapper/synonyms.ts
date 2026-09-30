@@ -1,9 +1,11 @@
 /**
  * The words a viewer might use for each technique, by current ID. One table feeds the
  * offline matcher and the picker's search, so the two never disagree about what "spoof"
- * means. Single words match the start of a word ("phish" takes "phishing"); several words
- * match as a phrase. The text is lower-cased and stripped of filler words first, so
- * "spoof the reports" is looked for as "spoof reports".
+ * means. A longer single word matches the start of a word ("phish" takes "phishing"); a
+ * short one (four letters or fewer) only the word and its plain endings; several words match
+ * as a phrase. The text is lower-cased and stripped of filler words first, so "spoof the
+ * reports" is looked for as "spoof reports", except for a phrase that filler would reduce to
+ * one word ("log in"), which must appear as typed.
  */
 export const SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   T0865: ["phish", "spearphish", "attachment", "lure", "email", "e-mail", "malicious mail"],
@@ -26,6 +28,7 @@ export const SYNONYMS: Readonly<Record<string, readonly string[]>> = {
     "password",
     "login",
     "log in",
+    "log into",
     "account",
   ],
   T0886: [

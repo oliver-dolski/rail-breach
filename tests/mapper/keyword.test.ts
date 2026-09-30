@@ -71,6 +71,28 @@ describe("the keyword matcher", () => {
     expect(ids("phishing phishing attachment email phish")).toEqual(["T0865"]);
   });
 
+  it("reads a phrase that filler would shrink to one word only as typed: 'log in' is not 'log'", () => {
+    expect(ids("log in to the console")).toEqual(["T0859"]);
+    expect(ids("log into the console")).toEqual(["T0859"]);
+    for (const text of ["read the log", "logistics", "the log files", "logs"]) {
+      expect(ids(text), text).toEqual([]);
+    }
+  });
+
+  it("takes a short synonym as the whole word and its plain endings, not as the start of another word", () => {
+    expect(ids("jam the channel")).toEqual(["T1691.001"]);
+    expect(ids("jamming the channel")).toEqual(["T1691.001"]);
+    expect(ids("scanning the network")).toEqual(["T0840"]);
+    expect(ids("scan the network")).toEqual(["T0840"]);
+    for (const text of ["jamaica", "a scandal", "rdpx"]) {
+      expect(ids(text), text).toEqual([]);
+    }
+    expect(ids("lured")).toEqual(["T0865"]);
+    // A longer synonym still takes the start of a word.
+    expect(ids("phishing")).toEqual(["T0865"]);
+    expect(ids("enumeration")).toEqual(["T0840"]);
+  });
+
   it("names the words it ignored", () => {
     const result = mapKeywords("please do phishing wibble", ctx);
     expect(result.intents.map((i) => i.technique)).toEqual(["T0865"]);
