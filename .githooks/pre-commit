@@ -2,6 +2,16 @@
 # core.hooksPath points at .githooks, which disables any machine-wide hooks.
 # Chain to the global pre-commit hook when one is configured so local
 # safety checks keep running; on machines without one this is a no-op.
+
+# A path that an ignore rule covers (including the untracked .git/info/exclude)
+# only gets staged with "git add -f"; refuse it so private notes stay local.
+forced=$(git diff --cached --name-only --diff-filter=ACMR -z | git check-ignore --no-index -z --stdin | tr '\0' '\n')
+if [ -n "$forced" ]; then
+  echo "pre-commit: refusing ignored paths staged with -f:" >&2
+  echo "$forced" >&2
+  exit 1
+fi
+
 global_dir=$(git config --global --get core.hooksPath)
 [ -n "$global_dir" ] || exit 0
 global_hook="$global_dir/pre-commit"
