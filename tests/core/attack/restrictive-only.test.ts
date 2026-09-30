@@ -65,7 +65,7 @@ function baseline(seed: number) {
 }
 
 /** Effects that can take a proceed away from a train that is already running towards it. */
-const WITHDRAWING: readonly string[] = ["blockCommands", "setView"];
+const WITHDRAWING: readonly string[] = ["blockCommands", "setView", "degrade"];
 
 /**
  * A lost command channel withdraws the proceed aspect of routes that are set
@@ -81,10 +81,20 @@ function overrunAllowance(seed: number): number {
   return baseline(seed).overruns + warmWorld(seed).trains.length;
 }
 
-const CYBER_FIELDS = ["integrity", "discovered", "cmdBlocked", "controlDenied", "view"] as const;
+const CYBER_FIELDS = [
+  "integrity",
+  "discovered",
+  "cmdBlocked",
+  "controlDenied",
+  "view",
+  "availability",
+  "paramClampPermille",
+] as const;
 
 /** Higher is worse for the operators. */
 const VIEW_ORDER: Record<string, number> = { ok: 0, spoofed: 1, frozen: 2, blank: 3 };
+/** Higher is worse. */
+const AVAILABILITY_ORDER: Record<string, number> = { ok: 0, degraded: 1, down: 2 };
 
 /** The attacked world may differ from the original only by monotone changes of the cyber fields. */
 function expectOnlyMonotoneCyberChanges(before: World, after: World): void {
@@ -100,6 +110,13 @@ function expectOnlyMonotoneCyberChanges(before: World, after: World): void {
       expect(node[key], `${node.id}.${key}`).toEqual(old[key]);
     }
     expect(node.integrity, `${node.id}.integrity`).toBeGreaterThanOrEqual(old.integrity);
+    // Availability only gets worse, and a parameter cap only goes down.
+    expect(AVAILABILITY_ORDER[node.availability], `${node.id}.availability`).toBeGreaterThanOrEqual(
+      AVAILABILITY_ORDER[old.availability] ?? 0,
+    );
+    expect(node.paramClampPermille, `${node.id}.paramClampPermille`).toBeLessThanOrEqual(
+      old.paramClampPermille,
+    );
     // A view may get worse (ok, spoofed, frozen, blank); it never gets better.
     expect(VIEW_ORDER[node.view], `${node.id}.view`).toBeGreaterThanOrEqual(
       VIEW_ORDER[old.view] ?? 0,

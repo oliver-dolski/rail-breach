@@ -1,12 +1,13 @@
 import type { Index } from "../sim/model";
-import type { NodeState, ViewState, World } from "../sim/world";
+import type { Availability, NodeState, ViewState, World } from "../sim/world";
 import type { Effect } from "./types";
 
 /**
  * The only place an attack touches the world, and it touches nothing but the
  * cyber fields of a NodeState (integrity, discovered, cmdBlocked, controlDenied,
- * view). Every write is monotone: a foothold never shrinks, a flag only turns on
- * and a view only gets worse. The railway learns of these fields solely through
+ * view, availability, paramClampPermille). Every write is monotone: a foothold
+ * never shrinks, a flag only turns on, a view or an availability only gets worse
+ * and a parameter cap only goes down. The railway learns of these fields solely through
  * deriveRailInputs, which can only restrict, so there is no path from here to a
  * lock, an aspect, a point or a train. Keep it that way: adding a member to
  * Effect that needs anything else is a design decision, not a code change.
@@ -40,6 +41,16 @@ export function applyEffect(world: World, index: Index, targetId: string, effect
       target.view = effect.state;
       return true;
     }
+    case "degrade": {
+      if (AVAILABILITY_RANK[effect.state] <= AVAILABILITY_RANK[target.availability]) return false;
+      target.availability = effect.state;
+      return true;
+    }
+    case "clampParam": {
+      if (effect.permille >= target.paramClampPermille) return false;
+      target.paramClampPermille = effect.permille;
+      return true;
+    }
     default:
       return assertNever(effect);
   }
@@ -47,6 +58,8 @@ export function applyEffect(world: World, index: Index, targetId: string, effect
 
 /** Worse views rank higher; a write that would not rank higher is ignored. */
 const VIEW_RANK: Record<ViewState, number> = { ok: 0, spoofed: 1, frozen: 2, blank: 3 };
+
+const AVAILABILITY_RANK: Record<Availability, number> = { ok: 0, degraded: 1, down: 2 };
 
 function assertNever(value: never): never {
   throw new Error(`applyEffect: unhandled effect ${JSON.stringify(value)}`);

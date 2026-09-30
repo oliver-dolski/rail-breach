@@ -1,6 +1,7 @@
 import type { Content, NodeKind, PointPos } from "../../content/types";
 import type { Op } from "../attack/types";
 import { internKey } from "../rng";
+import { PERMILLE } from "./constants";
 
 /**
  * Runtime state. Plain JSON only: objects, arrays, integers, strings, booleans.
@@ -28,6 +29,11 @@ export interface NodeState {
   cmdBlocked: boolean;
   controlDenied: boolean;
   discovered: boolean;
+  /**
+   * Cap on the line speed the node's sections allow, in permille of normal. Starts
+   * at 1000 and is only ever lowered by an attack; a local restoration raises it.
+   */
+  paramClampPermille: number;
 }
 
 export type RequestSource = "ctc" | "operator";
@@ -127,6 +133,7 @@ export function createWorld(content: Content, seed: number): World {
     cmdBlocked: false,
     controlDenied: false,
     discovered: false,
+    paramClampPermille: PERMILLE,
   }));
   const interlockings: InterlockingState[] = [...content.interlockings]
     .sort(compareId)

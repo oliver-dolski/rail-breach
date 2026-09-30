@@ -2,7 +2,28 @@ import type { TechniqueDef } from "../core/attack/types";
 import { buildNetIndex, reachableFrom } from "../core/net/graph";
 import { emergencyBrakeDistance } from "../core/rail/kinematics";
 import { MAX_SPEED_DM_PER_TICK, TRAIN_LENGTH_DM } from "../core/sim/constants";
+import attackIcs from "./attack-ics.json";
 import type { Content, NodeDef } from "./types";
+
+/** One row of the generated ATT&CK catalogue (scripts/build-attack.mjs). */
+export interface AttackEntry {
+  id: string;
+  name: string;
+  tactics: readonly string[];
+  /** On a current technique: the revoked ID it replaced. */
+  legacyId?: string;
+  revoked: boolean;
+  /** On a revoked technique: the current ID that replaced it. */
+  supersededBy?: string;
+}
+
+export interface AttackCatalogue {
+  attackVersion: string;
+  techniques: readonly AttackEntry[];
+}
+
+/** The catalogue generated from the pinned ATT&CK for ICS bundle. */
+export const attackCatalogue: AttackCatalogue = attackIcs;
 
 export class ContentError extends Error {
   constructor(readonly problems: readonly string[]) {
@@ -130,8 +151,16 @@ export function validateContent(content: Content): void {
  * a chance above 1000 permille is silently certain, and a legacy id that matches
  * another technique would overwrite it in the lookup table. Collects every
  * problem and throws one ContentError.
+ *
+ * Every id, legacy id, name and tactic is also checked against the generated
+ * ATT&CK catalogue: an id must be present and current, and a legacy id must be
+ * one the catalogue records as revoked in favour of exactly that technique.
  */
-export function validateTechniques(defs: readonly TechniqueDef[], content: Content): void {
+export function validateTechniques(
+  defs: readonly TechniqueDef[],
+  content: Content,
+  catalogue: AttackCatalogue = attackCatalogue,
+): void {
   const problems: string[] = [];
   const keys = new Map<string, string>();
   const claim = (key: string, owner: string, what: string): void => {
@@ -143,12 +172,15 @@ export function validateTechniques(defs: readonly TechniqueDef[], content: Conte
     }
   };
   const tags = new Set(content.nodes.flatMap((n) => n.tags as readonly string[]));
+  const entries = new Map(catalogue.techniques.map((t) => [t.id, t]));
 
   for (const def of defs) {
     const owner = `technique "${def.id}"`;
     if (def.id === "") problems.push("a technique has an empty id");
     claim(def.id, owner, "id");
     if (def.legacyId !== undefined) claim(def.legacyId, owner, "legacy id");
+
+    checkAgainstCatalogue(def, owner, entries, problems);
 
     const [min, max] = def.durationTicks;
     if (!isCount(min, 1) || !isCount(max, 1) || max < min) {
@@ -169,10 +201,72 @@ export function validateTechniques(defs: readonly TechniqueDef[], content: Conte
           problems.push(`${owner} ${effect.k} names tag "${effect.onTag}" that no node carries`);
         }
       }
+      if (effect.k === "denyControl" && effect.recoverTicks !== undefined) {
+        if (!isCount(effect.recoverTicks, 1)) {
+          problems.push(`${owner} denyControl recoverTicks must be an integer >= 1`);
+        }
+      }
+      if (effect.k === "clampParam") {
+        if (effect.param !== "speed") {
+          problems.push(
+            `${owner} clampParam names parameter "${String(effect.param)}" the engine does not handle`,
+          );
+        }
+        if (!isPermille(effect.permille)) {
+          problems.push(`${owner} clampParam permille must be an integer 0..1000`);
+        }
+      }
+      if (effect.k === "setView" && !VIEW_STATES.includes(effect.state)) {
+        problems.push(
+          `${owner} setView state "${String(effect.state)}" is not one the engine handles`,
+        );
+      }
+      if (effect.k === "degrade" && !DEGRADE_STATES.includes(effect.state)) {
+        problems.push(
+          `${owner} degrade state "${String(effect.state)}" is not one the engine handles`,
+        );
+      }
     }
+    if (def.effects.length === 0) problems.push(`${owner} has no effects`);
   }
 
   if (problems.length > 0) throw new ContentError(problems);
+}
+
+const VIEW_STATES: readonly string[] = ["spoofed", "frozen", "blank"];
+const DEGRADE_STATES: readonly string[] = ["degraded", "down"];
+
+function checkAgainstCatalogue(
+  def: TechniqueDef,
+  owner: string,
+  entries: ReadonlyMap<string, AttackEntry>,
+  problems: string[],
+): void {
+  const entry = entries.get(def.id);
+  if (entry === undefined) {
+    problems.push(`${owner} is not in the ATT&CK catalogue`);
+  } else {
+    if (entry.revoked) problems.push(`${owner} is revoked in ATT&CK`);
+    if (entry.name !== def.name) {
+      problems.push(`${owner} is named "${def.name}", the catalogue says "${entry.name}"`);
+    }
+    if (!entry.tactics.includes(def.tactic)) {
+      problems.push(`${owner} tactic "${def.tactic}" is not one of [${entry.tactics.join(", ")}]`);
+    }
+    if (entry.legacyId !== def.legacyId) {
+      problems.push(
+        `${owner} legacy id is ${def.legacyId ?? "none"}, the catalogue says ${entry.legacyId ?? "none"}`,
+      );
+    }
+  }
+  if (def.legacyId !== undefined) {
+    const alias = entries.get(def.legacyId);
+    if (alias === undefined) {
+      problems.push(`${owner} legacy id "${def.legacyId}" is not in the ATT&CK catalogue`);
+    } else if (!alias.revoked || alias.supersededBy !== def.id) {
+      problems.push(`${owner} legacy id "${def.legacyId}" is not a known alias of it`);
+    }
+  }
 }
 
 function validateTracks(content: Content, interlockings: Set<string>, problems: string[]): void {

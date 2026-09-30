@@ -61,6 +61,156 @@ export const remoteServices: TechniqueDef = {
     "A remote session over a permitted service moves the intruder on; on a system that owns a command channel the intruder holds the session and the operators lose that channel.",
 };
 
+/**
+ * How long a denial of control lasts before the operators get the channel back,
+ * in ticks (10 ticks are one simulated second). Denial of Control is the
+ * temporary sibling of Loss of Control; the engine lifts it after this time.
+ */
+export const DENIAL_OF_CONTROL_RECOVER_TICKS = 1200;
+
+export const externalRemoteServices: TechniqueDef = {
+  id: "T0822",
+  name: "External Remote Services",
+  tactic: "initial-access",
+  protocol: "vpn",
+  targets: { kinds: ["vpn-gateway"] },
+  pre: [{ k: "reach", from: "external", protocol: "vpn" }],
+  durationTicks: [30, 50],
+  successPermille: 850,
+  resistance: "host",
+  effects: [{ k: "foothold", priv: 1 }],
+  explain:
+    "The intruder signs in through the remote access service that the vendor is meant to use and arrives inside the network as a trusted party.",
+};
+
+export const validAccounts: TechniqueDef = {
+  id: "T0859",
+  name: "Valid Accounts",
+  tactic: "lateral-movement",
+  protocol: "maintenance",
+  targets: { kinds: ["interlocking", "engineering-ws"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "maintenance" }, { k: "targetDiscovered" }],
+  durationTicks: [20, 40],
+  successPermille: 900,
+  resistance: "none",
+  effects: [{ k: "foothold", priv: 1 }],
+  explain:
+    "A genuine maintenance account opens a session on the engineering interface; nothing is broken, so nothing looks broken.",
+};
+
+export const exploitationOfRemoteServices: TechniqueDef = {
+  id: "T0866",
+  name: "Exploitation of Remote Services",
+  tactic: "lateral-movement",
+  protocol: "remote-services",
+  targets: { tags: ["unpatched"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "remote-services" }, { k: "targetDiscovered" }],
+  durationTicks: [40, 70],
+  successPermille: 800,
+  resistance: "host",
+  effects: [{ k: "foothold", priv: 2 }],
+  explain:
+    "A weakness in a remote service that was never patched lets the intruder in without any credentials and with system-level reach.",
+};
+
+export const unauthorizedCommandMessage: TechniqueDef = {
+  id: "T1692.001",
+  legacyId: "T0855",
+  name: "Unauthorized Message: Command Message",
+  tactic: "impair-process-control",
+  protocol: "scada-proto",
+  targets: { kinds: ["interlocking"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "scada-proto" }, { k: "targetDiscovered" }],
+  durationTicks: [30, 50],
+  successPermille: 900,
+  resistance: "none",
+  effects: [{ k: "blockCommands" }],
+  explain:
+    "Commands that no dispatcher sent reach one interlocking; it can only answer them restrictively, so routes are refused and signals stay at danger.",
+};
+
+export const modifyParameter: TechniqueDef = {
+  id: "T0836",
+  name: "Modify Parameter",
+  tactic: "impair-process-control",
+  protocol: "maintenance",
+  targets: { kinds: ["interlocking"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "maintenance" }, { k: "targetDiscovered" }],
+  durationTicks: [30, 60],
+  successPermille: 800,
+  resistance: "none",
+  effects: [{ k: "clampParam", param: "speed", permille: 250 }],
+  explain:
+    "An engineering parameter is changed so the sections of one interlocking carry a far lower speed limit; the vital layer only ever accepts a change that makes things safer, so trains crawl.",
+};
+
+export const blockCommandMessage: TechniqueDef = {
+  id: "T1691.001",
+  legacyId: "T0803",
+  name: "Block Operational Technology Message: Command Message",
+  tactic: "inhibit-response-function",
+  protocol: "scada-proto",
+  targets: { kinds: ["front-end-processor", "scada-server", "interlocking"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "scada-proto" }, { k: "targetDiscovered" }],
+  durationTicks: [30, 50],
+  successPermille: 900,
+  resistance: "host",
+  effects: [{ k: "blockCommands" }],
+  explain:
+    "Commands are accepted by the console and never arrive; dispatchers set routes and nothing happens, so trains queue at red signals.",
+};
+
+export const denialOfControl: TechniqueDef = {
+  id: "T0813",
+  name: "Denial of Control",
+  tactic: "impact",
+  protocol: "scada-proto",
+  targets: { kinds: ["hmi", "scada-server"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "scada-proto" }],
+  durationTicks: [20, 40],
+  successPermille: 900,
+  resistance: "host",
+  effects: [
+    {
+      k: "denyControl",
+      onTag: "has-cmd-channel",
+      recoverTicks: DENIAL_OF_CONTROL_RECOVER_TICKS,
+    },
+  ],
+  explain:
+    "The operators' controls lock up for a while: they can watch the line but cannot steer it until the session recovers on its own.",
+};
+
+export const lossOfView: TechniqueDef = {
+  id: "T0829",
+  name: "Loss of View",
+  tactic: "impact",
+  protocol: "scada-proto",
+  targets: { kinds: ["hmi", "scada-server"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "scada-proto" }],
+  durationTicks: [30, 60],
+  successPermille: 850,
+  resistance: "host",
+  effects: [{ k: "setView", state: "frozen" }],
+  explain:
+    "The track diagram freezes: the operators no longer see where trains are, and only a local restoration at the station brings the picture back.",
+};
+
+export const lossOfSafety: TechniqueDef = {
+  id: "T0880",
+  name: "Loss of Safety",
+  tactic: "impact",
+  protocol: "maintenance",
+  targets: { kinds: ["interlocking"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "maintenance" }, { k: "targetDiscovered" }],
+  durationTicks: [60, 100],
+  successPermille: 850,
+  resistance: "host",
+  effects: [{ k: "degrade", state: "down" }],
+  explain:
+    "The safety function of one interlocking is taken out; a fail-safe system answers by going to its safe state, with signals at danger and trains held.",
+};
+
 export const unauthorizedReportingMessage: TechniqueDef = {
   id: "T1692.002",
   legacyId: "T0856",
@@ -79,7 +229,16 @@ export const unauthorizedReportingMessage: TechniqueDef = {
 
 export const techniques: TechniqueDef[] = [
   spearphishingAttachment,
-  networkConnectionEnumeration,
+  externalRemoteServices,
+  validAccounts,
   remoteServices,
+  exploitationOfRemoteServices,
+  networkConnectionEnumeration,
+  unauthorizedCommandMessage,
+  modifyParameter,
+  blockCommandMessage,
   unauthorizedReportingMessage,
+  denialOfControl,
+  lossOfView,
+  lossOfSafety,
 ];

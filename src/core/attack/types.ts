@@ -58,9 +58,14 @@ export type Effect =
   | { k: "foothold"; priv: Privilege }
   | { k: "discover"; hops: number }
   | { k: "blockCommands"; onTag?: string }
-  | { k: "denyControl"; onTag?: string }
+  /** `recoverTicks`: the denial lifts by itself that many ticks later; absent means it stays. */
+  | { k: "denyControl"; onTag?: string; recoverTicks?: number }
   /** The operators' picture of the node gets worse, never better: ok, spoofed, frozen, blank. */
-  | { k: "setView"; state: "spoofed" | "frozen" | "blank" };
+  | { k: "setView"; state: "spoofed" | "frozen" | "blank" }
+  /** The node's availability gets worse, never better: ok, degraded, down. */
+  | { k: "degrade"; state: "degraded" | "down" }
+  /** Caps a parameter of the node at `permille` of its normal value. Only ever lowered. */
+  | { k: "clampParam"; param: "speed"; permille: number };
 
 export type EffectKind = Effect["k"];
 
