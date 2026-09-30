@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { SimEvent } from "../../src/core/sim/events";
 import type { World } from "../../src/core/sim/world";
@@ -150,5 +151,29 @@ describe("the refusal surface", () => {
     expect(formatRefusal(first)).toMatch(
       /^IL-(TAV|VEL|CRE) refused route R-[\w-]+: command channel is blocked$/,
     );
+  });
+});
+
+describe("what a screen reader is told", () => {
+  const html = readFileSync("index.html", "utf8");
+
+  it("announces only the verdict: the live region holds the label, not the running tick count", () => {
+    const section = html.match(/<section class="indicator"[^>]*>/)?.[0] ?? "";
+    expect(section).not.toMatch(/aria-live/);
+    const label = html.match(/<div\s+id="indicator-label"[^>]*>/)?.[0] ?? "";
+    expect(label).toMatch(/aria-live="polite"/);
+    const detail = html.match(/<div\s+id="indicator-detail"[^>]*>/)?.[0] ?? "";
+    expect(detail).not.toMatch(/aria-live/);
+  });
+
+  it("keeps the label text fixed while ticks pass, so the region only changes when the verdict flips", () => {
+    const at = (ticks: number) =>
+      indicatorText({
+        assertedHeld: true,
+        reading: { held: true, violations: [] },
+        checkedTicks: ticks,
+      });
+    expect(at(10).label).toBe(at(99999).label);
+    expect(at(10).detail).not.toBe(at(99999).detail);
   });
 });
