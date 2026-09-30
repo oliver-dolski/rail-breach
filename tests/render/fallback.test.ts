@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { layout } from "../../src/content/layout";
 import { network } from "../../src/content/network";
-import { buildFallbackSvg } from "../../src/render/fallbackSvg";
+import { buildFallbackSvg, stillTrains } from "../../src/render/fallbackSvg";
 import { detectWebgl2 } from "../../src/render/gl/context";
 import { FALLBACK_MESSAGE, showFallback } from "../../src/ui/fallback";
 
@@ -132,5 +132,46 @@ describe("the page shell", () => {
     expect(existsSync("public/.nojekyll")).toBe(true);
     expect(existsSync("public/favicon.svg")).toBe(true);
     expect(html).toContain('src="/fallback.svg"');
+  });
+});
+
+describe("the trains in the still", () => {
+  /** Distance from a point to the nearest segment of a polyline. */
+  function distanceToPolyline(
+    p: { x: number; y: number },
+    pts: readonly { x: number; y: number }[],
+  ): number {
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      if (!a || !b) continue;
+      const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1;
+      const t = Math.min(
+        1,
+        Math.max(0, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / len2),
+      );
+      best = Math.min(
+        best,
+        Math.hypot(p.x - (a.x + (b.x - a.x) * t), p.y - (a.y + (b.y - a.y) * t)),
+      );
+    }
+    return best;
+  }
+
+  it("sit on the track of their block, including the bent branch block", () => {
+    const trains = stillTrains(layout);
+    expect(trains.map((t) => t.block)).toContain("BR_up");
+    for (const t of trains) {
+      const pts = layout.blocks[t.block] ?? [];
+      const middle = { x: (t.x1 + t.x2) / 2, y: (t.y1 + t.y2) / 2 };
+      expect(distanceToPolyline(middle, pts), t.block).toBeLessThan(0.5);
+    }
+  });
+
+  it("have the same visible length whatever way their block runs", () => {
+    for (const t of stillTrains(layout)) {
+      expect(Math.hypot(t.x2 - t.x1, t.y2 - t.y1), t.block).toBeCloseTo(18, 5);
+    }
   });
 });

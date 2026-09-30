@@ -1,5 +1,6 @@
 import type { Layout, Pt } from "../content/layout";
 import type { Content } from "../content/types";
+import { pointAt, polyline } from "./geometry";
 import { ALERT_COLORS, cssColor, NEUTRAL, type Rgb, SIGNAL_COLORS } from "./palette";
 
 /**
@@ -48,6 +49,39 @@ function glyph(
     );
   }
   return `<circle cx="${num(x)}" cy="${num(y)}" r="${num(r * 0.72)}" fill="none" stroke="${c}" stroke-width="${num(r * 0.5)}"/>`;
+}
+
+export interface StillTrain {
+  block: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/** Half the drawn length of a train glyph, in map units. */
+const TRAIN_HALF_LENGTH = 9;
+
+/**
+ * Where each train of the still sits: on its block's polyline, lying along the
+ * segment it is on. A straight line between the ends of a bent block would put
+ * the train beside the track.
+ */
+export function stillTrains(layout: Layout): StillTrain[] {
+  const out: StillTrain[] = [];
+  for (const t of STILL.trains) {
+    const pts = layout.blocks[t.block];
+    if (!pts || pts.length < 2) continue;
+    const at = pointAt(polyline(pts), t.at);
+    out.push({
+      block: t.block,
+      x1: at.x - at.dx * TRAIN_HALF_LENGTH,
+      y1: at.y - at.dy * TRAIN_HALF_LENGTH,
+      x2: at.x + at.dx * TRAIN_HALF_LENGTH,
+      y2: at.y + at.dy * TRAIN_HALF_LENGTH,
+    });
+  }
+  return out;
 }
 
 export function buildFallbackSvg(layout: Layout, content: Content): string {
@@ -100,16 +134,9 @@ export function buildFallbackSvg(layout: Layout, content: Content): string {
     );
   }
 
-  for (const t of STILL.trains) {
-    const pts = layout.blocks[t.block];
-    const a = pts?.[0];
-    const b = pts?.[pts.length - 1];
-    if (!a || !b) continue;
-    const x = a.x + (b.x - a.x) * t.at;
-    const y = a.y + (b.y - a.y) * t.at;
-    const ux = Math.sign(b.x - a.x) * 9;
+  for (const t of stillTrains(layout)) {
     add(
-      `<line x1="${num(x - ux)}" y1="${num(y)}" x2="${num(x + ux)}" y2="${num(y)}" stroke="${cssColor(NEUTRAL.train)}" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>`,
+      `<line x1="${num(t.x1)}" y1="${num(t.y1)}" x2="${num(t.x2)}" y2="${num(t.y2)}" stroke="${cssColor(NEUTRAL.train)}" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>`,
     );
   }
 

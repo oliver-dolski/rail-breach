@@ -73,7 +73,7 @@
 <polyline points="845,710 845,650" fill="none" stroke="rgb(102 106 112)" stroke-width="4"/>
 <line x1="628" y1="710" x2="646" y2="710" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
 <line x1="998" y1="650" x2="980" y2="650" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
-<line x1="1165.3" y1="785" x2="1147.3" y2="785" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
+<line x1="1135.7" y1="830" x2="1117.7" y2="830" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
 <circle cx="160" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
 <circle cx="405" cy="724" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
 <circle cx="505" cy="724" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
