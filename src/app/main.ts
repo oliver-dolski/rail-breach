@@ -39,6 +39,7 @@ import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
 import { createAttractSession } from "./session";
+import { switchScenario } from "./switch";
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -232,26 +233,31 @@ function boot(): void {
   let gate = createRefreshGate();
 
   /** Starts another scenario from its own recording and clears everything the last one left on screen. */
-  const switchTo = (id: string): void => {
-    const entry = entryFor(id);
-    if (entry === undefined || entry.scenario.id === session.scenario.id) return;
-    try {
-      session = createAttractSession({ scenario: entry.scenario, recording: entry.recording });
-    } catch (error) {
-      refuse(error);
-      return;
-    }
-    viewContext = createViewContext(network, session.index, layout);
-    seenGeneration = session.generation();
-    gate = createRefreshGate();
-    log.reset();
-    ring.clear();
-    flashes.clear();
-    timeline.reset();
-    compare.reset();
-    lastGood = undefined;
-    selector.show(id);
-  };
+  const switchTo = (id: string): void =>
+    switchScenario(id, {
+      runningId: () => session.scenario.id,
+      build: (wanted) => {
+        const entry = entryFor(wanted);
+        return entry === undefined
+          ? undefined
+          : createAttractSession({ scenario: entry.scenario, recording: entry.recording });
+      },
+      adopt: (next, wanted) => {
+        session = next;
+        viewContext = createViewContext(network, session.index, layout);
+        seenGeneration = session.generation();
+        gate = createRefreshGate();
+        log.reset();
+        ring.clear();
+        flashes.clear();
+        timeline.reset();
+        compare.reset();
+        lastGood = undefined;
+        selector.show(wanted);
+      },
+      restore: (running) => selector.show(running),
+      say: (text) => setText(sessionNote, text),
+    });
   const selector = createScenarioSelect(
     document,
     catalog.map((e) => ({
