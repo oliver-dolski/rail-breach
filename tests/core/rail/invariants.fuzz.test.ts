@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { network } from "../../../src/content/network";
+import { techniques } from "../../../src/content/techniques";
+import type { TechniqueDef } from "../../../src/core/attack/types";
+import { deriveAspects } from "../../../src/core/rail/interlocking";
 import {
   assertInvariants,
   findViolations,
@@ -11,6 +14,7 @@ import type { SimEvent } from "../../../src/core/sim/events";
 import { buildIndex, type Index } from "../../../src/core/sim/model";
 import { step } from "../../../src/core/sim/step";
 import { createWorld, type World } from "../../../src/core/sim/world";
+import { launchAction, prepared, run, winningSeed } from "../../fixtures/attack";
 import { miniRail } from "../../fixtures/mini-rail";
 
 const SEEDS = 201; // seeds 0..200
@@ -23,6 +27,25 @@ const nodeIds = network.nodes.map((n) => n.id).sort();
 const P_WHEN = 1;
 const P_WHAT = 2;
 const P_WHICH = 3;
+const P_TECHNIQUE = 4;
+const P_TARGET = 5;
+const P_NODE = 6;
+const P_PREPARE = 7;
+
+/** The index the fuzz steps with: the whole catalogue, safety invariant asserted on every tick. */
+const catalogueIndex = (): Index => buildIndex(network, { techniques, checkInvariants: true });
+
+/** The nodes a technique may be aimed at, as its own target selector says. */
+function validTargets(def: TechniqueDef): string[] {
+  const { kinds, roles, tags } = def.targets;
+  return network.nodes
+    .filter((n) => kinds === undefined || kinds.includes(n.kind))
+    .filter((n) => roles === undefined || roles.some((r) => n.roles.includes(r)))
+    .filter((n) => tags === undefined || tags.some((t) => n.tags.includes(t)))
+    .map((n) => n.id)
+    .sort();
+}
+const targetsOf = new Map(techniques.map((t) => [t.id, validTargets(t)]));
 
 function pick<T>(items: readonly T[], seed: number, tick: number, purpose: number): T {
   const item = items[roll32(seed, tick, purpose) % items.length];
@@ -66,6 +89,11 @@ function disturbNode(world: World, seed: number, tick: number): void {
 }
 
 interface Tally {
+  /** Launches sent against a valid target, and how many of them succeeded, per technique. */
+  launched: Record<string, number>;
+  succeeded: Record<string, number>;
+  /** Effects that ended again, by timing out or by a restore. */
+  recoveries: number;
   injected: number;
   rejected: number;
   set: number;
@@ -75,9 +103,11 @@ interface Tally {
   maxTrains: number;
 }
 
-function fuzzRun(seed: number, index: Index, ticks: number): Tally {
-  let world = createWorld(network, seed);
-  const tally: Tally = {
+function newTally(): Tally {
+  return {
+    launched: {},
+    succeeded: {},
+    recoveries: 0,
     injected: 0,
     rejected: 0,
     set: 0,
@@ -86,27 +116,90 @@ function fuzzRun(seed: number, index: Index, ticks: number): Tally {
     arrivals: 0,
     maxTrains: 0,
   };
+}
+
+const bump = (counts: Record<string, number>, key: string): void => {
+  counts[key] = (counts[key] ?? 0) + 1;
+};
+
+/**
+ * The fail-safe reading of the cyber state, checked on every tick besides the
+ * safety invariant: an interlocking that is out of service shows every signal dark,
+ * a signal whose lamp controller failed is dark, and a lost command channel takes the
+ * proceed away from a route no train has entered. The safety invariant alone would not
+ * notice a rule that stopped honouring one of these, because the signal would still be
+ * safe to show; the fail-safe behaviour is what makes the attack visible on the track.
+ */
+function assertFailSafe(world: World, index: Index): void {
+  const aspects = deriveAspects(world, index);
+  index.rail.graph.signals.forEach((signal, i) => {
+    const aspect = aspects[i];
+    const il = world.interlockings.find((x) => x.id === signal.interlocking);
+    if (il?.health === "down" && aspect !== "dark") {
+      throw new Error(`tick ${world.tick}: ${signal.id} shows ${aspect} while ${il.id} is down`);
+    }
+    if (world.darkSignals.includes(signal.id) && aspect !== "dark") {
+      throw new Error(`tick ${world.tick}: ${signal.id} shows ${aspect} with its lamp out`);
+    }
+    if (il?.cmdBlocked === true && (aspect === "proceed" || aspect === "caution")) {
+      const held = il.locks.find(
+        (l) => index.rail.routes.byId.get(l.route)?.entry.id === signal.id && !l.used,
+      );
+      if (held !== undefined) {
+        throw new Error(`tick ${world.tick}: ${signal.id} shows ${aspect} with the channel lost`);
+      }
+    }
+  });
+}
+
+function fuzzRun(seed: number, index: Index, ticks: number): Tally {
+  let world = createWorld(network, seed);
+  const tally = newTally();
   for (let i = 0; i < ticks; i++) {
     const tick = world.tick + 1;
     const actions: Action[] = [];
     // about one injection in twenty ticks
     if (roll32(seed, tick, P_WHEN) % 20 === 0) {
       tally.injected += 1;
-      switch (roll32(seed, tick, P_WHAT) % 3) {
+      switch (roll32(seed, tick, P_WHAT) % 8) {
         case 0:
           actions.push({ type: "route.cancel", route: pick(routeIds, seed, tick, P_WHICH) });
           break;
         case 1:
           actions.push({ type: "route.request", route: pick(routeIds, seed, tick, P_WHICH) });
           break;
-        default:
+        case 2:
           disturbNode(world, seed, tick);
+          break;
+        case 3:
+        case 4:
+        case 5: {
+          // Any of the 13 techniques against a node it may be aimed at.
+          const def = pick(techniques, seed, tick, P_TECHNIQUE);
+          const target = pick(targetsOf.get(def.id) ?? [], seed, tick, P_TARGET);
+          actions.push({ type: "technique.launch", technique: def.id, target });
+          bump(tally.launched, def.id);
+          break;
+        }
+        case 6:
+          actions.push({ type: "restore", node: pick(nodeIds, seed, tick, P_NODE) });
+          break;
+        default: {
+          // The attacker gains ground: a foothold or a discovered node, never a loss.
+          const node = world.nodes.find((n) => n.id === pick(nodeIds, seed, tick, P_PREPARE));
+          if (node === undefined) break;
+          if (roll32(seed, tick, P_PREPARE + 10) % 2 === 0) node.integrity = 1;
+          else node.discovered = true;
+        }
       }
     }
     const result = step(world, actions, index);
     world = result.world;
+    assertFailSafe(world, index);
     tally.maxTrains = Math.max(tally.maxTrains, world.trains.length);
     for (const e of result.events) {
+      if (e.k === "technique.succeeded") bump(tally.succeeded, e.technique);
+      if (e.k === "effect.cleared") tally.recoveries += 1;
       if (e.k === "command.rejected") tally.rejected += 1;
       if (e.k === "route.set") tally.set += 1;
       if (e.k === "train.overran") tally.overruns += 1;
@@ -211,20 +304,17 @@ describe("safety invariant", () => {
     expect(isAction({ type: "route.cancel", route: "R-HAR-dn" })).toBe(true);
   });
 
-  it(`holds under random restrictive commands and cyber degradation over seeds 0..${SEEDS - 1}`, () => {
-    const index = buildIndex(network, { checkInvariants: true });
-    const total: Tally = {
-      injected: 0,
-      rejected: 0,
-      set: 0,
-      overruns: 0,
-      departures: 0,
-      arrivals: 0,
-      maxTrains: 0,
-    };
+  it(`holds under random commands, all 13 techniques and restores over seeds 0..${SEEDS - 1}`, () => {
+    const index = catalogueIndex();
+    const total = newTally();
     for (let seed = 0; seed < SEEDS; seed++) {
       // step() throws InvariantViolation on the first broken rule
       const tally = fuzzRun(seed, index, FUZZ_TICKS);
+      for (const [id, n] of Object.entries(tally.launched))
+        total.launched[id] = (total.launched[id] ?? 0) + n;
+      for (const [id, n] of Object.entries(tally.succeeded))
+        total.succeeded[id] = (total.succeeded[id] ?? 0) + n;
+      total.recoveries += tally.recoveries;
       total.injected += tally.injected;
       total.rejected += tally.rejected;
       total.set += tally.set;
@@ -239,10 +329,17 @@ describe("safety invariant", () => {
     expect(total.set).toBeGreaterThan(SEEDS * 5);
     expect(total.departures).toBeGreaterThan(SEEDS);
     expect(total.maxTrains).toBeGreaterThanOrEqual(3);
+    // ... and it drew on the whole catalogue: every technique was launched and every one landed
+    // at least once, and effects were lifted again (by restore or by timing out).
+    for (const def of techniques) {
+      expect(total.launched[def.id] ?? 0, `${def.id} launched`).toBeGreaterThan(0);
+      expect(total.succeeded[def.id] ?? 0, `${def.id} succeeded`).toBeGreaterThan(0);
+    }
+    expect(total.recoveries).toBeGreaterThan(SEEDS);
   }, 300_000);
 
   it("gives the same result for the same seed", () => {
-    const index = buildIndex(network, { checkInvariants: true });
+    const index = catalogueIndex();
     expect(fuzzRun(17, index, 1500)).toEqual(fuzzRun(17, index, 1500));
   });
 });
@@ -355,5 +452,54 @@ describe("unsafe commands are refused with a reason", () => {
     expect(refusals(result.events).map((e) => e.reason)).toEqual([
       "approach locked: a train is within braking distance of the signal",
     ]);
+  });
+});
+
+describe("liveness after a restoration", () => {
+  const index = catalogueIndex();
+  const routeSets = (events: SimEvent[], il?: string) =>
+    events.filter((e) => e.k === "route.set" && (il === undefined || e.il === il)).length;
+  const arrivals = (events: SimEvent[]) => events.filter((e) => e.k === "train.arrived").length;
+
+  it("Loss of Safety holds the interlocking out, and a restore lets it take routes and pass trains again", () => {
+    const launch = {
+      technique: "T0880",
+      target: "il-vel",
+      foothold: ["ctrl-eng-ws"],
+      discovered: ["il-vel"],
+    };
+    const seed = winningSeed(launch, "degrade", index);
+    const landed = run(prepared(launch, seed), index, [launchAction(launch)], 600);
+    expect(landed.world.nodes.find((n) => n.id === "il-vel")?.availability).toBe("down");
+
+    const held = run(landed.world, index, [], 3000);
+    expect(routeSets(held.events, "IL-VEL")).toBe(0);
+
+    const restore = { t: 3001, a: { type: "restore" as const, node: "il-vel" } };
+    const after = run(held.world, index, [restore], 12000);
+    expect(after.world.nodes.find((n) => n.id === "il-vel")?.availability).toBe("ok");
+    expect(routeSets(after.events, "IL-VEL")).toBeGreaterThan(0);
+    expect(arrivals(after.events)).toBeGreaterThan(arrivals(held.events));
+  });
+
+  it("a blocked command channel refuses every route, and a restore brings the dispatcher back", () => {
+    const launch = {
+      technique: "T1691.001",
+      target: "tms-server",
+      foothold: ["dispatch-hmi-1"],
+      discovered: ["tms-server"],
+    };
+    const seed = winningSeed(launch, "blockCommands", index);
+    const landed = run(prepared(launch, seed), index, [launchAction(launch)], 600);
+    expect(landed.world.nodes.find((n) => n.id === "tms-server")?.cmdBlocked).toBe(true);
+
+    const held = run(landed.world, index, [], 3000);
+    expect(routeSets(held.events)).toBe(0);
+
+    const restore = { t: 3001, a: { type: "restore" as const, node: "tms-server" } };
+    const after = run(held.world, index, [restore], 12000);
+    expect(after.world.nodes.find((n) => n.id === "tms-server")?.cmdBlocked).toBe(false);
+    expect(routeSets(after.events)).toBeGreaterThan(0);
+    expect(arrivals(after.events)).toBeGreaterThan(arrivals(held.events));
   });
 });

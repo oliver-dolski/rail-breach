@@ -77,3 +77,33 @@ export function nodeOf(world: World, id: string): World["nodes"][number] {
   if (node === undefined) throw new Error(`no node ${id}`);
   return node;
 }
+
+/** A technique launch with the attacker's starting position: footholds and discovered nodes. */
+export interface Launch {
+  technique: string;
+  target: string;
+  foothold: string[];
+  discovered: string[];
+}
+
+/** The fictional network at tick 0 with the launch's footholds and discoveries in place. */
+export function prepared(launch: Launch, seed: number): World {
+  const world = createWorld(network, seed);
+  for (const id of launch.foothold) nodeOf(world, id).integrity = 1;
+  for (const id of launch.discovered) nodeOf(world, id).discovered = true;
+  return world;
+}
+
+export const launchAction = (launch: Launch, t = 1): TimedAction => ({
+  t,
+  a: { type: "technique.launch", technique: launch.technique, target: launch.target },
+});
+
+/** The first of 40 seeds whose dice let the launch apply `effect`, found by running it. */
+export function winningSeed(launch: Launch, effect: string, index: Index): number {
+  for (let seed = 0; seed < 40; seed++) {
+    const { events } = run(prepared(launch, seed), index, [launchAction(launch)], 400);
+    if (events.some((e) => e.k === "effect.applied" && e.effect === effect)) return seed;
+  }
+  throw new Error(`no seed lets ${launch.technique} succeed`);
+}

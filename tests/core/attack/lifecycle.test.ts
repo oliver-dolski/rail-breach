@@ -10,22 +10,21 @@ import { DENIAL_OF_CONTROL_RECOVER_TICKS } from "../../../src/core/sim/constants
 import type { SimEvent } from "../../../src/core/sim/events";
 import { createWorld, type TrainState, type World } from "../../../src/core/sim/world";
 import recordingJson from "../../../src/recordings/phishing-dispatcher.json";
-import { networkIndex, nodeOf, run } from "../../fixtures/attack";
+import {
+  type Launch,
+  launchAction,
+  networkIndex,
+  nodeOf,
+  prepared,
+  run,
+  winningSeed,
+} from "../../fixtures/attack";
 
 // The index checks the safety invariant after every step, so every run below
 // asserts it on every tick: a violation throws out of step().
 const index = networkIndex();
 
-const SEEDS = Array.from({ length: 40 }, (_, i) => i);
-
 const roundTrip = (world: World): World => JSON.parse(JSON.stringify(world)) as World;
-
-interface Launch {
-  technique: string;
-  target: string;
-  foothold: string[];
-  discovered: string[];
-}
 
 const T0813: Launch = {
   technique: "T0813",
@@ -34,32 +33,11 @@ const T0813: Launch = {
   discovered: [],
 };
 
-function prepared(launch: Launch, seed: number): World {
-  const world = createWorld(network, seed);
-  for (const id of launch.foothold) nodeOf(world, id).integrity = 1;
-  for (const id of launch.discovered) nodeOf(world, id).discovered = true;
-  return world;
-}
-
-const launchAction = (launch: Launch, t = 1): TimedAction => ({
-  t,
-  a: { type: "technique.launch", technique: launch.technique, target: launch.target },
-});
-
-/** The first seed whose dice let the launch succeed, found by running it. */
-function winningSeed(launch: Launch, effect: string): number {
-  for (const seed of SEEDS) {
-    const { events } = run(prepared(launch, seed), index, [launchAction(launch)], 400);
-    if (events.some((e) => e.k === "effect.applied" && e.effect === effect)) return seed;
-  }
-  throw new Error(`no seed lets ${launch.technique} succeed`);
-}
-
 const cleared = (events: SimEvent[]) =>
   events.filter((e): e is Extract<SimEvent, { k: "effect.cleared" }> => e.k === "effect.cleared");
 
 describe("T0813 Denial of Control lifts on its own", () => {
-  const seed = winningSeed(T0813, "denyControl");
+  const seed = winningSeed(T0813, "denyControl", index);
   const actions = [launchAction(T0813)];
 
   const landing = run(prepared(T0813, seed), index, actions, 400);
@@ -138,7 +116,7 @@ describe("T0829 Loss of View persists until a local restoration", () => {
     foothold: ["dispatch-hmi-1"],
     discovered: [],
   };
-  const seed = winningSeed(T0829, "setView");
+  const seed = winningSeed(T0829, "setView", index);
   const actions = [launchAction(T0829)];
   const landing = run(prepared(T0829, seed), index, actions, 400);
 
@@ -293,7 +271,7 @@ describe("T0880 Loss of Safety drives the interlocking to its safe state", () =>
     foothold: ["ctrl-eng-ws"],
     discovered: ["il-vel"],
   };
-  const seed = winningSeed(T0880, "degrade");
+  const seed = winningSeed(T0880, "degrade", index);
   const landing = run(prepared(T0880, seed), index, [launchAction(T0880)], 600);
 
   it("puts every signal of the interlocking dark and refuses its routes", () => {
