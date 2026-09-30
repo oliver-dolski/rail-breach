@@ -36,6 +36,11 @@ export function groupDigits(n: number): string {
 export interface IndicatorInput {
   /** Whether every tick so far passed the core's assertion. */
   assertedHeld: boolean;
+  /**
+   * What the core said when it halted. The world on screen is the last good one
+   * then, so re-reading it cannot produce the breach text.
+   */
+  assertedViolations?: readonly string[];
   /** Result of reading the invariant on the world on screen. */
   reading: InvariantReading;
   checkedTicks: number;
@@ -54,7 +59,8 @@ export function indicatorText(input: IndicatorInput): {
       held,
     };
   }
-  const first = input.reading.violations[0] ?? "reported by the core";
+  const first =
+    input.assertedViolations?.[0] ?? input.reading.violations[0] ?? "reported by the core";
   return { label: "safety invariant: BREACHED", detail: first, held };
 }
 

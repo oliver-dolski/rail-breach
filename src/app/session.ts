@@ -112,6 +112,8 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
           } else {
             throw error;
           }
+          // A replay mismatch is raised after the tick's events were recorded; keep them.
+          for (const event of runner.drainEvents()) pending.push(event);
           return;
         }
         for (const event of runner.drainEvents()) pending.push(event);

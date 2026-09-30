@@ -13,6 +13,7 @@ import { showFallback } from "../ui/fallback";
 import { createLabels } from "../ui/labels";
 import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
+import { createRefreshGate } from "../ui/panel/refresh";
 import { type LoopHandle, startLoop } from "./loop";
 import { createAttractSession } from "./session";
 
@@ -107,7 +108,7 @@ function boot(): void {
   }
 
   let seenGeneration = session.generation();
-  let shownTick = -1;
+  const gate = createRefreshGate();
   const target = {
     advance(ticks: number): void {
       session.advance(ticks);
@@ -128,8 +129,7 @@ function boot(): void {
     const world = session.world();
     const view = buildView(world, viewContext, { prev: session.previous(), alpha });
     renderer?.draw(view, ring);
-    if (world.tick !== shownTick) {
-      shownTick = world.tick;
+    if (gate.changed(world.tick, session.status())) {
       labels.mark(world);
       panel.update(session, view, log);
     }

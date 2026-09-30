@@ -38,6 +38,7 @@ export function createPanel(doc: Document): Panel {
       const status = session.status();
       renderIndicator(indicator, {
         assertedHeld: status.held,
+        assertedViolations: status.violations,
         reading: readInvariant(session.world(), session.index),
         checkedTicks: status.checkedTicks,
       });
