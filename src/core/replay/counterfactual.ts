@@ -1,4 +1,5 @@
 import { stateHash } from "../hash";
+import { deriveAspects } from "../rail/interlocking";
 import type { Index } from "../sim/model";
 import { step } from "../sim/step";
 import type { World } from "../sim/world";
@@ -26,6 +27,14 @@ export interface Outcome {
   compromised: string[];
   /** Nodes whose command channel is blocked at the end, in id order. */
   commandChannelLost: string[];
+  /** Signals showing stop or dark at the end, and how many signals there are. */
+  signalsAtStop: number;
+  signals: number;
+  /** Trains standing at the end, and how many are on the line. */
+  trainsStanding: number;
+  trains: number;
+  /** Interlockings out of service at the end. */
+  interlockingsDown: number;
 }
 
 /** Steps `initial` through `actions` up to and including `toTick` and sums the run up. */
@@ -58,6 +67,7 @@ export function runOutcome(
       }
     }
   }
+  const aspects = deriveAspects(world, index);
   return {
     hash: stateHash(world),
     firstActionTick: world.firstActionTick,
@@ -68,6 +78,11 @@ export function runOutcome(
     refused,
     compromised: world.nodes.filter((n) => n.integrity > 0).map((n) => n.id),
     commandChannelLost: world.nodes.filter((n) => n.cmdBlocked).map((n) => n.id),
+    signalsAtStop: aspects.filter((a) => a === "stop" || a === "dark").length,
+    signals: aspects.length,
+    trainsStanding: world.trains.filter((t) => t.speedDmPerTick === 0).length,
+    trains: world.trains.length,
+    interlockingsDown: world.interlockings.filter((i) => i.health === "down").length,
   };
 }
 

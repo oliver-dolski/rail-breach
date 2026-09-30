@@ -137,6 +137,24 @@ describe("each scenario plays through the session, verified against its recordin
   }
 });
 
+describe("an assumed breach is told at the start of every show", () => {
+  it("opens the insider show with the breach, again after the show starts over, and never for the others", () => {
+    const insider = createAttractSession({ scenario: insiderSignalbox });
+    expect(insider.drainEvents()).toEqual([
+      { k: "breach.assumed", tick: insiderSignalbox.startTick, node: "mws-vel" },
+    ]);
+    insider.advance(10);
+    insider.reset();
+    insider.advance(1);
+    expect(insider.drainEvents().map((e) => e.k)).toContain("breach.assumed");
+    for (const scenario of [phishingDispatcher, vendorVpn]) {
+      const session = createAttractSession({ scenario });
+      session.advance(5);
+      expect(session.drainEvents().map((e) => e.k)).not.toContain("breach.assumed");
+    }
+  });
+});
+
 describe("Vendor VPN", () => {
   const run = story(vendorVpn);
 

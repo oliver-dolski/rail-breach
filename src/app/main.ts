@@ -21,6 +21,7 @@ import {
   showFallback,
 } from "../ui/fallback";
 import { createLabels } from "../ui/labels";
+import { createComparePanel } from "../ui/panel/compare";
 import { createDefensePalette } from "../ui/panel/defense";
 import { createFreeText } from "../ui/panel/freetext";
 import { createKeyPanel } from "../ui/panel/llmkey";
@@ -29,8 +30,10 @@ import { createPanel } from "../ui/panel/panel";
 import { createPicker } from "../ui/panel/picker";
 import { createRefreshGate } from "../ui/panel/refresh";
 import { createScenarioSelect } from "../ui/panel/scenario";
+import { createTimelineView, Timeline } from "../ui/panel/timeline";
 import { createViewToggle } from "../ui/panel/viewmode";
 import { catalog, entryFor } from "./catalog";
+import { compareSession, defenseCount } from "./compare";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
@@ -97,6 +100,13 @@ function boot(): void {
     ctx: mapperContext,
     mapper: createLlmMapper({ keystore, fallback: keywordMapper, model: keyPanel.model }),
     onAction: (action) => session.dispatch(action),
+  });
+  const timeline = new Timeline(names);
+  const timelineView = createTimelineView(document);
+  const compare = createComparePanel(document, {
+    defenseCount: () => defenseCount(session),
+    run: () => compareSession(session),
+    endTick: () => session.recording.durationTicks,
   });
   const ring = new ParticleRing();
   const flashes = new AlertFlashes();
@@ -233,6 +243,8 @@ function boot(): void {
     log.reset();
     ring.clear();
     flashes.clear();
+    timeline.reset();
+    compare.reset();
     lastGood = undefined;
     selector.show(id);
   };
@@ -254,10 +266,13 @@ function boot(): void {
         log.reset();
         ring.clear();
         flashes.clear();
+        timeline.reset();
+        compare.reset();
         lastGood = undefined;
       }
       const events = session.drainEvents();
       log.ingest(events, session.scenario.startTick);
+      timeline.ingest(events, session.scenario.startTick);
       flashes.ingest(events);
       for (const event of events) {
         if (event.k === "packet") for (const p of packetParticles(event, layout)) ring.push(p);
@@ -283,6 +298,15 @@ function boot(): void {
       viewToggle.note(view.reporting);
       panel.update(session, view, log);
       defenses.update(world, session.live());
+      timelineView.update(
+        timeline.model(
+          world,
+          session.scenario.startTick,
+          session.recording.durationTicks - session.scenario.startTick,
+        ),
+        world,
+      );
+      compare.update();
     }
   };
 

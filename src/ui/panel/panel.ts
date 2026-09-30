@@ -27,6 +27,7 @@ export function createPanel(doc: Document): Panel {
   const caption = need(doc, "caption");
   const chain = need(doc, "chain");
   const logList = need(doc, "log");
+  const alertList = need(doc, "alerts");
   const stat = {
     trains: need(doc, "stat-trains"),
     signals: need(doc, "stat-signals"),
@@ -77,7 +78,12 @@ export function createPanel(doc: Document): Panel {
       syncList(
         doc,
         logList,
-        log.entries().map((e) => ({ key: e.key, text: e.text, tone: e.tone })),
+        log.simulation().map((e) => ({ key: e.key, text: e.text, tone: e.tone })),
+      );
+      syncList(
+        doc,
+        alertList,
+        log.alerts().map((e) => ({ key: e.key, text: e.text, tone: e.tone })),
       );
     },
   };

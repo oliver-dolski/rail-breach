@@ -182,9 +182,51 @@
         </section>
 
         <section class="block">
+          <h2>With and without your defenses</h2>
+          <p id="compare-note" class="muted"></p>
+          <button type="button" id="compare-run" class="plain" disabled>Compare</button>
+          <table id="compare-table" class="compare" hidden>
+            <thead>
+              <tr>
+                <th scope="col">At the end of the show</th>
+                <th scope="col">As recorded</th>
+                <th scope="col">With your defenses</th>
+              </tr>
+            </thead>
+            <tbody id="compare-body"></tbody>
+          </table>
+          <p id="compare-verdict" class="caption"></p>
+        </section>
+
+        <section class="block">
           <h2>Attack chain</h2>
           <div id="chain" class="chain"></div>
           <p id="caption" class="caption"></p>
+        </section>
+
+        <section class="block">
+          <h2>Attacker and detection</h2>
+          <div class="timeline">
+            <div class="tl-row">
+              <span class="tl-name">Attacker</span>
+              <div id="tl-attacker" class="tl-track">
+                <span id="tl-band-attacker" class="tl-band" hidden></span>
+                <span id="tl-now-attacker" class="tl-now" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-name">Detection</span>
+              <div id="tl-detection" class="tl-track">
+                <span id="tl-band-detection" class="tl-band" hidden></span>
+                <span id="tl-now-detection" class="tl-now" aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
+          <p id="tl-dwell" class="muted"></p>
+          <p class="muted">
+            The shaded gap runs from the attacker's first action to the first IDS alert: the
+            time the intruder went unnoticed. Hover a mark for what it was.
+          </p>
         </section>
 
         <section class="block">
@@ -196,6 +238,11 @@
         <section class="block grow">
           <h2>Events</h2>
           <ul id="log" class="log"></ul>
+        </section>
+
+        <section class="block">
+          <h2>IDS alerts</h2>
+          <ul id="alerts" class="log log-alerts"></ul>
         </section>
 
         <section class="block">

@@ -97,9 +97,18 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
   warm.advance(scenario.startTick);
   const snapshot = warm.view();
 
+  // The quiet stretch is not narrated, but an assumed breach is where the story begins: the
+  // viewer is told of it at the start of the show, every time the show starts.
+  const opening = (): SimEvent[] =>
+    scenario.initialFootholds.map((node) => ({
+      k: "breach.assumed",
+      tick: scenario.startTick,
+      node,
+    }));
+
   let runner: Runner = createRunner(snapshot, source, index);
   let previous: World | undefined;
-  let pending: SimEvent[] = [];
+  let pending: SimEvent[] = opening();
   let generation = 0;
   let checkedTicks = scenario.startTick;
   let held = true;
@@ -114,7 +123,7 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
     queue = new LiveQueue();
     forked = false;
     previous = undefined;
-    pending = [];
+    pending = opening();
     generation++;
   };
 

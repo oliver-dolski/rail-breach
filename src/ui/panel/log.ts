@@ -1,5 +1,5 @@
 import type { Layout } from "../../content/layout";
-import type { TechniqueDef } from "../../core/attack/types";
+import type { EffectKind, TechniqueDef } from "../../core/attack/types";
 import { TICKS_PER_SECOND } from "../../core/sim/constants";
 import type { SimEvent } from "../../core/sim/events";
 
@@ -16,7 +16,7 @@ export interface Names {
   node(id: string): string;
   /** The short on-map caption of a conduit, or its id when the layout has none. */
   conduit(id: string): string;
-  technique(id: string): { name: string; explain: string } | undefined;
+  technique(id: string): { name: string; explain: string; legacyId?: string } | undefined;
 }
 
 export function createNames(layout: Layout, techniques: readonly TechniqueDef[]): Names {
@@ -26,7 +26,10 @@ export function createNames(layout: Layout, techniques: readonly TechniqueDef[])
     conduit: (id) => layout.conduits[id] ?? id,
     technique: (id) => {
       const t = byId.get(id);
-      return t === undefined ? undefined : { name: t.name, explain: t.explain };
+      if (t === undefined) return undefined;
+      return t.legacyId === undefined
+        ? { name: t.name, explain: t.explain }
+        : { name: t.name, explain: t.explain, legacyId: t.legacyId };
     },
   };
 }
@@ -48,6 +51,20 @@ const NEWSWORTHY_REFUSALS = [
   "interlocking is out of service",
   "is disturbed",
 ];
+
+/**
+ * What the log says when an effect on a machine ends, in the words the operators would use.
+ * One line per effect kind, so a restoration that clears several reads as several lines.
+ */
+const CLEARED_TEXT: Record<EffectKind, string> = {
+  foothold: "intruder evicted",
+  discover: "intruder's map forgotten",
+  blockCommands: "command channel restored",
+  denyControl: "operators regained control",
+  setView: "operators' picture restored",
+  degrade: "back in service",
+  clampParam: "speed limit restored",
+};
 
 const KIND_NAME = { firewall: "Firewall", diode: "Data diode", ids: "IDS sensor" } as const;
 
@@ -92,6 +109,7 @@ export class EventLog {
   constructor(
     private readonly names: Names,
     private readonly capacity = 14,
+    private readonly alertCapacity = 8,
   ) {}
 
   reset(): void {
@@ -105,6 +123,16 @@ export class EventLog {
 
   entries(): readonly LogEntry[] {
     return this.items;
+  }
+
+  /** The simulation's own events, newest first: what the attacker did, what it did to the railway. */
+  simulation(): readonly LogEntry[] {
+    return this.items.filter((e) => e.tone !== "detection");
+  }
+
+  /** The IDS alerts alone, newest first, on their own list so they are never buried by simulation events. */
+  alerts(): readonly LogEntry[] {
+    return this.items.filter((e) => e.tone === "detection");
   }
 
   chain(): readonly ChainStep[] {
@@ -126,7 +154,19 @@ export class EventLog {
   private add(tick: number, startTick: number, tone: Tone, text: string): void {
     const at = `${formatClock(tick - startTick)}  `;
     this.items.unshift({ key: `e${this.seq++}`, tick, tone, text: at + text });
-    if (this.items.length > this.capacity) this.items.length = this.capacity;
+    // One store, two lanes: each lane drops its own oldest entry, so a flood of simulation
+    // events can never push an alert out, nor the other way round.
+    const isAlert = tone === "detection";
+    const cap = isAlert ? this.alertCapacity : this.capacity;
+    let kept = 0;
+    for (let i = 0; i < this.items.length; i++) {
+      if ((this.items[i]?.tone === "detection") !== isAlert) continue;
+      kept++;
+      if (kept > cap) {
+        this.items.splice(i, 1);
+        break;
+      }
+    }
   }
 
   private step(op: number): ChainStep | undefined {
@@ -190,6 +230,22 @@ export class EventLog {
         } else if (event.effect === "denyControl") {
           this.add(event.tick, start, "effect", `${n.node(event.node)}: operators lost control`);
         }
+        break;
+      case "effect.cleared":
+        this.add(
+          event.tick,
+          start,
+          "effect",
+          `${n.node(event.node)}: ${CLEARED_TEXT[event.effect]}`,
+        );
+        break;
+      case "breach.assumed":
+        this.add(
+          event.tick,
+          start,
+          "attack",
+          `${n.node(event.node)}: already held by the intruder (assumed breach)`,
+        );
         break;
       case "command.rejected": {
         this.latestRefusal = event;
