@@ -22,7 +22,7 @@ describe("the keystore", () => {
     const shared = memory();
     const ks = createKeystore(() => shared);
     expect(ks.getKey()).toBeUndefined();
-    expect(ks.setKey(KEY)).toBe(true);
+    expect(ks.setKey(KEY)).toBe("stored");
     expect(ks.getKey()).toBe(KEY);
     ks.clearKey();
     expect(ks.getKey()).toBeUndefined();
@@ -32,7 +32,7 @@ describe("the keystore", () => {
   it("trims the key it is given", () => {
     const shared = memory();
     const ks = createKeystore(() => shared);
-    expect(ks.setKey(`  ${KEY}\n`)).toBe(true);
+    expect(ks.setKey(`  ${KEY}\n`)).toBe("stored");
     expect(ks.getKey()).toBe(KEY);
   });
 
@@ -47,7 +47,7 @@ describe("the keystore", () => {
       "k".repeat(300),
       "é".repeat(30),
     ]) {
-      expect(ks.setKey(bad), JSON.stringify(bad)).toBe(false);
+      expect(ks.setKey(bad), JSON.stringify(bad)).toBe("bad-shape");
     }
     expect(shared.items.size).toBe(0);
   });
@@ -63,7 +63,7 @@ describe("the keystore", () => {
     const local = memory();
     vi.stubGlobal("sessionStorage", session);
     vi.stubGlobal("localStorage", local);
-    expect(keystore.setKey(KEY)).toBe(true);
+    expect(keystore.setKey(KEY)).toBe("stored");
     expect(session.items.size).toBe(1);
     expect(local.items.size).toBe(0);
     keystore.clearKey();
@@ -73,14 +73,14 @@ describe("the keystore", () => {
   it("copes with storage that is missing or throws", () => {
     const missing = createKeystore(() => undefined);
     expect(missing.getKey()).toBeUndefined();
-    expect(missing.setKey(KEY)).toBe(false);
+    expect(missing.setKey(KEY)).toBe("no-storage");
     expect(() => missing.clearKey()).not.toThrow();
 
     const throwing = createKeystore(() => {
       throw new Error("SecurityError");
     });
     expect(throwing.getKey()).toBeUndefined();
-    expect(throwing.setKey(KEY)).toBe(false);
+    expect(throwing.setKey(KEY)).toBe("no-storage");
     expect(() => throwing.clearKey()).not.toThrow();
   });
 

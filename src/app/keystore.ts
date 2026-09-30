@@ -16,11 +16,14 @@ export interface KeyStorage {
   removeItem(name: string): void;
 }
 
+/** Why a key was or was not taken: stored, not shaped like a key, or the browser would not keep it. */
+export type SetKeyResult = "stored" | "bad-shape" | "no-storage";
+
 export interface Keystore {
   /** The key, or undefined when none is held (or storage is unavailable). */
   getKey(): string | undefined;
-  /** Holds the key for this tab. False, and nothing stored, when it is not shaped like a key. */
-  setKey(key: string): boolean;
+  /** Holds the key for this tab. Nothing is stored unless the result is "stored". */
+  setKey(key: string): SetKeyResult;
   clearKey(): void;
   /** Calls `listener` after every change; returns a function that stops it. The key is never passed. */
   onChange(listener: () => void): () => void;
@@ -47,14 +50,14 @@ export function createKeystore(storage: () => KeyStorage | undefined): Keystore 
     },
     setKey(key) {
       const trimmed = key.trim();
-      if (!KEY_SHAPE.test(trimmed)) return false;
+      if (!KEY_SHAPE.test(trimmed)) return "bad-shape";
       const stored = safely((s) => {
         s.setItem(STORAGE_KEY, trimmed);
         return true;
       });
-      if (stored !== true) return false;
+      if (stored !== true) return "no-storage";
       notify();
-      return true;
+      return "stored";
     },
     clearKey() {
       safely((s) => s.removeItem(STORAGE_KEY));

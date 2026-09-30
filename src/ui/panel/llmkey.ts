@@ -12,6 +12,8 @@ export const STATUS_NO_KEY = "No key: text is read offline by keywords.";
 export const STATUS_KEY =
   "Key held for this tab only. Interpret asks the LLM, keywords take over on any problem.";
 export const STATUS_BAD_KEY = "That does not look like an API key, so nothing was stored.";
+export const STATUS_NO_STORAGE =
+  "This browser would not keep the key for the tab (storage is blocked), so nothing was stored.";
 
 function need<T extends HTMLElement>(doc: Document, id: string): T {
   const el = doc.getElementById(id);
@@ -48,7 +50,9 @@ export function createKeyPanel(doc: Document, keystore: Keystore): KeyPanel {
     const value = input.value;
     input.value = "";
     if (value.trim() === "") return;
-    if (!keystore.setKey(value)) setText(status, STATUS_BAD_KEY);
+    const result = keystore.setKey(value);
+    if (result === "bad-shape") setText(status, STATUS_BAD_KEY);
+    else if (result === "no-storage") setText(status, STATUS_NO_STORAGE);
   };
   save.addEventListener("click", take);
   input.addEventListener("keydown", (event) => {
