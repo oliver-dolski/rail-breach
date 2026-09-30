@@ -7,8 +7,9 @@ import { playbook, type Scenario, stepAt } from "./types";
  * bypassing the DMZ that the office path has to cross. From the engineering workstation a
  * maintenance session reaches the Tavershall interlocking and takes its safety function
  * out. A fail-safe interlocking can only answer one way: its signals go dark and trains
- * stand at red. The tunnel is encrypted, so there is little for a sensor to read; the
- * dwell before anyone notices is the point of the story.
+ * stand at red. The tunnel is encrypted, so there is little for a sensor to read: with no
+ * sensor placed, only the baseline monitoring notices, and with this seed it catches one
+ * hop about 16 seconds in, after the intruder is already inside the control centre.
  *
  * The chain is one playbook, so every step starts two ticks after the one before it has
  * ended, however long each took. The seed is chosen so every roll goes the attacker's
