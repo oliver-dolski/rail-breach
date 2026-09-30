@@ -9,12 +9,13 @@ import { ParticleRing, packetParticles } from "../render/particleRing";
 import { MapRenderer } from "../render/renderer";
 import { buildView, createViewContext } from "../render/view";
 import { setText } from "../ui/dom";
-import { showFallback } from "../ui/fallback";
+import { RENDER_FAILED_MESSAGE, reportBootFailure, showFallback } from "../ui/fallback";
 import { createLabels } from "../ui/labels";
 import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
 import { createRefreshGate } from "../ui/panel/refresh";
 import { type LoopHandle, startLoop } from "./loop";
+import { attempt } from "./recovery";
 import { createAttractSession } from "./session";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -59,20 +60,25 @@ function boot(): void {
   const ring = new ParticleRing();
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  const fallbackEls = {
+    canvas,
+    labels: byId("labels"),
+    fallback: byId("fallback"),
+    message: byId("fallback-message"),
+  };
+
   let renderer: MapRenderer | undefined;
+
   const detection = detectWebgl2(canvas);
   if (detection.ok && detection.gl) {
-    renderer = new MapRenderer(detection.gl, layout, network, { reducedMotion });
-  } else {
-    showFallback(
-      {
-        canvas,
-        labels: byId("labels"),
-        fallback: byId("fallback"),
-        message: byId("fallback-message"),
-      },
-      detection.reason ?? "WebGL2 is unavailable",
+    // Some drivers hand out a WebGL2 context and then refuse a shader.
+    const gl = detection.gl;
+    renderer = attempt(
+      () => new MapRenderer(gl, layout, network, { reducedMotion }),
+      (reason) => showFallback(fallbackEls, reason, RENDER_FAILED_MESSAGE),
     );
+  } else {
+    showFallback(fallbackEls, detection.reason ?? "WebGL2 is unavailable");
   }
 
   let dpr = 1;
@@ -138,4 +144,8 @@ function boot(): void {
   loop = startLoop(target, render);
 }
 
-boot();
+try {
+  boot();
+} catch (error) {
+  reportBootFailure(document, error);
+}
