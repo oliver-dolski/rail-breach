@@ -1,3 +1,4 @@
+import type { TechniqueDef } from "../core/attack/types";
 import { buildNetIndex, reachableFrom } from "../core/net/graph";
 import { emergencyBrakeDistance } from "../core/rail/kinematics";
 import { MAX_SPEED_DM_PER_TICK, TRAIN_LENGTH_DM } from "../core/sim/constants";
@@ -20,6 +21,9 @@ function idSet(kind: string, items: readonly { id: string }[], problems: string[
 }
 
 const isCount = (n: number, min: number): boolean => Number.isInteger(n) && n >= min;
+
+const isPermille = (n: number | undefined): boolean =>
+  n !== undefined && Number.isInteger(n) && n >= 0 && n <= 1000;
 
 /**
  * Referential-integrity check run at load. Collects every problem and throws
@@ -51,6 +55,9 @@ export function validateContent(content: Content): void {
       node.hardeningPermille > 1000
     ) {
       problems.push(`node "${node.id}" hardeningPermille must be an integer 0..1000`);
+    }
+    if (node.awarenessPermille !== undefined && !isPermille(node.awarenessPermille)) {
+      problems.push(`node "${node.id}" awarenessPermille must be an integer 0..1000`);
     }
   }
 
@@ -113,6 +120,57 @@ export function validateContent(content: Content): void {
   }
 
   validateTracks(content, interlockings, problems);
+
+  if (problems.length > 0) throw new ContentError(problems);
+}
+
+/**
+ * Checks the technique catalogue against the content it runs on. The engine
+ * trusts these numbers: a duration with max below min turns the jitter into NaN,
+ * a chance above 1000 permille is silently certain, and a legacy id that matches
+ * another technique would overwrite it in the lookup table. Collects every
+ * problem and throws one ContentError.
+ */
+export function validateTechniques(defs: readonly TechniqueDef[], content: Content): void {
+  const problems: string[] = [];
+  const keys = new Map<string, string>();
+  const claim = (key: string, owner: string, what: string): void => {
+    const other = keys.get(key);
+    if (other !== undefined) {
+      problems.push(`${what} "${key}" of ${owner} is already taken by ${other}`);
+    } else {
+      keys.set(key, owner);
+    }
+  };
+  const tags = new Set(content.nodes.flatMap((n) => n.tags as readonly string[]));
+
+  for (const def of defs) {
+    const owner = `technique "${def.id}"`;
+    if (def.id === "") problems.push("a technique has an empty id");
+    claim(def.id, owner, "id");
+    if (def.legacyId !== undefined) claim(def.legacyId, owner, "legacy id");
+
+    const [min, max] = def.durationTicks;
+    if (!isCount(min, 1) || !isCount(max, 1) || max < min) {
+      problems.push(`${owner} durationTicks must be integers with 1 <= min <= max`);
+    }
+    if (!isPermille(def.successPermille)) {
+      problems.push(`${owner} successPermille must be an integer 0..1000`);
+    }
+    for (const effect of def.effects) {
+      if (effect.k === "discover" && !isCount(effect.hops, 0)) {
+        problems.push(`${owner} discover hops must be an integer >= 0`);
+      }
+      if (effect.k === "foothold" && effect.priv !== 1 && effect.priv !== 2) {
+        problems.push(`${owner} foothold privilege must be 1 or 2`);
+      }
+      if ((effect.k === "blockCommands" || effect.k === "denyControl") && effect.onTag) {
+        if (!tags.has(effect.onTag)) {
+          problems.push(`${owner} ${effect.k} names tag "${effect.onTag}" that no node carries`);
+        }
+      }
+    }
+  }
 
   if (problems.length > 0) throw new ContentError(problems);
 }

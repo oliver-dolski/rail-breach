@@ -2,6 +2,7 @@ import { network } from "../content/network";
 import { phishingDispatcher, type Scenario } from "../content/scenarios/phishing-dispatcher";
 import { techniques } from "../content/techniques";
 import type { Content } from "../content/types";
+import { validateContent, validateTechniques } from "../content/validate";
 import { InvariantViolation } from "../core/rail/invariants";
 import { assertRecording, type Recording, type TimedAction } from "../core/replay/recording";
 import { createRunner, ReplayMismatchError, type Runner } from "../core/replay/runner";
@@ -63,6 +64,10 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
   const raw: unknown = options.recording ?? recordingJson;
   assertRecording(raw);
   const recording: Recording = raw;
+
+  // Authoring mistakes fail here, whole and named, not as a silent never-succeeds later.
+  validateContent(content);
+  validateTechniques(techniques, content);
 
   // The safety check stays on: every tick of the run is asserted, and a breach throws.
   const index = buildIndex(content, { techniques, checkInvariants: true });
