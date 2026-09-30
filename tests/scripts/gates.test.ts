@@ -78,6 +78,58 @@ describe("lint:core determinism gate", () => {
     }
   });
 
+  it("rejects aliasing, destructuring and the other ways around a textual match", async () => {
+    const aliased: Record<string, string> = {
+      "alias.ts": "const M = Math;\nexport const x = M.random();\n",
+      "destructure.ts": "export const { random } = Math;\n",
+      "global.ts": "export const x = globalThis.Math.random();\n",
+      "reflect.ts": 'export const x = Reflect.get(Math, "random");\n',
+      "intl.ts": "export const x = new Intl.NumberFormat().format(1);\n",
+      "locale.ts": "export const x = (1).toLocaleString();\n",
+      "selfcrypto.ts": "const { crypto } = self;\n",
+      "evaluated.ts": 'export const x = eval("1");\n',
+      "hypot.ts": "export const x = Math.hypot(3, 4);\n",
+    };
+    const result = await node(CORE_LINT, coreDir("aliased", aliased));
+    expect(result.code).toBe(1);
+    for (const file of Object.keys(aliased)) {
+      // alias.ts breaks the rule on its first line already
+      expect(result.out, `${file} should be reported`).toMatch(new RegExp(`${file}:[12]:`));
+    }
+  });
+
+  it("still sees a banned call after a regex literal that contains a quote", async () => {
+    const quoted: Record<string, string> = {
+      "double.ts": 'export const x = /"/.test(s) && Math.random();\n',
+      "single.ts": "export const x = /'/.test(s) ? Math.random() : 0;\n",
+      "klass.ts": "export const x = /[/'\"]+/.test(s) || Date.now();\n",
+    };
+    const result = await node(CORE_LINT, coreDir("regex-quote", quoted));
+    expect(result.code).toBe(1);
+    for (const file of Object.keys(quoted)) {
+      expect(result.out, `${file} should be reported`).toContain(`${file}:1:`);
+    }
+  });
+
+  it("tells division from a regex literal and blanks banned names inside a literal", async () => {
+    const divided = coreDir("division", {
+      "divide.ts": "export const x = (a + b) / 2; export const y = Math.random() / 2;\n",
+    });
+    expect((await node(CORE_LINT, divided)).out).toContain("divide.ts:1:");
+
+    const clean = coreDir("regex-clean", {
+      "ok.ts": [
+        "export const a = /Math.random|Date/.test(s);",
+        "export const b = i++ / 2 + n / 4;",
+        "export const c = Math.round(x / 3) + Math.ceil(y / 3);",
+        "",
+      ].join("\n"),
+    });
+    const result = await node(CORE_LINT, clean);
+    expect(result.out).toContain("files clean");
+    expect(result.code).toBe(0);
+  });
+
   it("ignores banned names in comments and strings, and allows exact integer math", async () => {
     const dir = coreDir("clean", {
       "prose.ts": [
