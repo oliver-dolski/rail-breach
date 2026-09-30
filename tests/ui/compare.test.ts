@@ -271,6 +271,30 @@ describe("the comparison on the page", () => {
     expect(byId.get("compare-verdict")?.textContent).toBe("");
   });
 
+  it("shows a failed run as a visible message and clears any older table", () => {
+    const { doc, byId } = fakeDocument();
+    let fail = false;
+    const panel = createComparePanel(doc, {
+      defenseCount: () => 1,
+      run: () => {
+        if (fail) throw new Error("section sec-x holds a and b");
+        return both(outcome(), held());
+      },
+      endTick: () => 1000,
+    });
+    panel.update();
+    byId.get("compare-run")?.click();
+    expect(byId.get("compare-table")?.hidden).toBe(false);
+
+    fail = true;
+    byId.get("compare-run")?.click();
+    expect(byId.get("compare-table")?.hidden).toBe(true);
+    expect(byId.get("compare-body")?.children).toEqual([]);
+    expect(byId.get("compare-verdict")?.textContent).toBe(
+      "The comparison could not be completed: section sec-x holds a and b",
+    );
+  });
+
   it("holds no markup sink and only reads what the engine computed", () => {
     const code = readFileSync("src/ui/panel/compare.ts", "utf8");
     expect(code).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);

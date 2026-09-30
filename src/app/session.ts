@@ -50,6 +50,11 @@ export interface AttractSession {
   dispatch(action: Action): void;
   /** True once a live action has forked the show; false again after a restart. */
   live(): boolean;
+  /**
+   * Latches the safety indicator as breached with the core's own text, for a violation found
+   * outside the live loop (a comparison run). Never goes back to held, like the loop's own halt.
+   */
+  reportViolation(violations: readonly string[]): void;
   /** Starts the show over from its beginning, dropping every live action. */
   reset(): void;
   /** The world the show starts from, after the quiet stretch: what a comparison re-runs from. */
@@ -178,6 +183,11 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
     startWorld: () => snapshot,
     liveActions: () => queue.all(),
     live: () => forked,
+    reportViolation(list) {
+      if (!held) return;
+      held = false;
+      violations = list;
+    },
     reset: restart,
     status: () => ({ held, violations, checkedTicks, failure }),
     elapsedTicks: () => Math.max(0, runner.view().tick - scenario.startTick),

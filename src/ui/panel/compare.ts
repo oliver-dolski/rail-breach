@@ -113,7 +113,18 @@ export function createComparePanel(doc: Document, deps: CompareDeps): ComparePan
   };
 
   button.addEventListener("click", () => {
-    const result = deps.run();
+    let result: Comparison | undefined;
+    try {
+      result = deps.run();
+    } catch (error) {
+      // A run that throws must never leave an old table or a calm screen behind.
+      clear();
+      setText(
+        verdict,
+        `The comparison could not be completed: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
+      return;
+    }
     if (result === undefined) return;
     while (body.firstChild) body.removeChild(body.firstChild);
     for (const row of compareRows(result, deps.endTick())) {

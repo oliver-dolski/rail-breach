@@ -1,3 +1,4 @@
+import { InvariantViolation } from "../core/rail/invariants";
 import type { Comparison } from "../core/replay/counterfactual";
 import { counterfactual } from "../core/replay/counterfactual";
 import type { TimedAction } from "../core/replay/recording";
@@ -17,18 +18,25 @@ export function defenseCount(session: AttractSession): number {
  * once as recorded (with whatever attacks the viewer launched, and none of their defense
  * changes) and once with those changes. Both runs are the real engine and deterministic, so
  * the difference is the viewer's defenses and nothing else. Nothing here touches the live
- * session. Undefined when no defense has been placed.
+ * session. Undefined when no defense has been placed. The comparison runs with the safety
+ * check on, like the live loop: a violation latches the session's indicator as breached and
+ * is thrown on, so the caller shows the failure instead of a comparison.
  */
 export function compareSession(session: AttractSession): Comparison | undefined {
   const live = session.liveActions();
   const defenses = live.filter(isDefenseAction);
   if (defenses.length === 0) return undefined;
   const base = [...session.recording.actions, ...live.filter((x) => !isDefenseAction(x))];
-  return counterfactual(
-    session.startWorld(),
-    session.index,
-    base,
-    session.recording.durationTicks,
-    defenses,
-  );
+  try {
+    return counterfactual(
+      session.startWorld(),
+      session.index,
+      base,
+      session.recording.durationTicks,
+      defenses,
+    );
+  } catch (error) {
+    if (error instanceof InvariantViolation) session.reportViolation(error.violations);
+    throw error;
+  }
 }
