@@ -15,7 +15,16 @@ export function setText(el: Textual, text: string): void {
 
 const FORBIDDEN_ATTRS = /^(on|style$|srcdoc$)/i;
 
-/** Creates an element. Attribute names that can run script or bypass the CSP are refused. */
+/** Attributes whose value is a URL the browser will follow or load. */
+const URL_ATTRS = /^(href|src|action|formaction|poster|data|xlink:href)$/i;
+
+/** A URL may point at this site, at a fragment, or at https. Anything else, javascript: included, is refused. */
+const SAFE_URL = /^(\/(?!\/)|#|https:\/\/)/i;
+
+/**
+ * Creates an element. Attribute names that can run script or bypass the CSP are
+ * refused, and so are URL attributes whose value is not local or https.
+ */
 export function h<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
   tag: K,
@@ -25,6 +34,9 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   const el = doc.createElement(tag);
   for (const [name, value] of Object.entries(attrs)) {
     if (FORBIDDEN_ATTRS.test(name)) throw new Error(`attribute "${name}" is not allowed`);
+    if (URL_ATTRS.test(name) && !SAFE_URL.test(value)) {
+      throw new Error(`attribute "${name}" does not accept that URL`);
+    }
     el.setAttribute(name, value);
   }
   for (const child of children) el.append(child);
