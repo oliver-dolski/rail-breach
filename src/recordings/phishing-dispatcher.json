@@ -1,0 +1,171 @@
+{
+  "format": "rail-breach.recording",
+  "schema": 1,
+  "seed": 6,
+  "tickMs": 100,
+  "durationTicks": 3000,
+  "actions": [
+    {
+      "t": 200,
+      "a": {
+        "type": "technique.launch",
+        "technique": "T0865",
+        "target": "corp-ws-dispatch"
+      }
+    },
+    {
+      "t": 300,
+      "a": {
+        "type": "technique.launch",
+        "technique": "T0840",
+        "target": "corp-ws-dispatch"
+      }
+    },
+    {
+      "t": 400,
+      "a": {
+        "type": "technique.launch",
+        "technique": "T0886",
+        "target": "dmz-relay"
+      }
+    },
+    {
+      "t": 500,
+      "a": {
+        "type": "technique.launch",
+        "technique": "T0886",
+        "target": "dispatch-hmi-1"
+      }
+    },
+    {
+      "t": 600,
+      "a": {
+        "type": "technique.launch",
+        "technique": "T0886",
+        "target": "tms-server"
+      }
+    }
+  ],
+  "checkpoints": [
+    {
+      "t": 100,
+      "h": "df070b87"
+    },
+    {
+      "t": 200,
+      "h": "ad263741"
+    },
+    {
+      "t": 300,
+      "h": "4f2dc1c0"
+    },
+    {
+      "t": 400,
+      "h": "216942a8"
+    },
+    {
+      "t": 500,
+      "h": "8ac54479"
+    },
+    {
+      "t": 600,
+      "h": "876a035c"
+    },
+    {
+      "t": 700,
+      "h": "4df597c7"
+    },
+    {
+      "t": 800,
+      "h": "6877f85a"
+    },
+    {
+      "t": 900,
+      "h": "04e0ac01"
+    },
+    {
+      "t": 1000,
+      "h": "bfcaacad"
+    },
+    {
+      "t": 1100,
+      "h": "49503836"
+    },
+    {
+      "t": 1200,
+      "h": "b57ab4e0"
+    },
+    {
+      "t": 1300,
+      "h": "641dee1f"
+    },
+    {
+      "t": 1400,
+      "h": "37f65b07"
+    },
+    {
+      "t": 1500,
+      "h": "f90e5ed7"
+    },
+    {
+      "t": 1600,
+      "h": "ef9e1427"
+    },
+    {
+      "t": 1700,
+      "h": "e1468abf"
+    },
+    {
+      "t": 1800,
+      "h": "98d2b418"
+    },
+    {
+      "t": 1900,
+      "h": "91718b91"
+    },
+    {
+      "t": 2000,
+      "h": "fbf8d3a2"
+    },
+    {
+      "t": 2100,
+      "h": "2f1652fd"
+    },
+    {
+      "t": 2200,
+      "h": "771db931"
+    },
+    {
+      "t": 2300,
+      "h": "79bd361f"
+    },
+    {
+      "t": 2400,
+      "h": "b391fd49"
+    },
+    {
+      "t": 2500,
+      "h": "2b1a08ab"
+    },
+    {
+      "t": 2600,
+      "h": "a17e3589"
+    },
+    {
+      "t": 2700,
+      "h": "20a6a427"
+    },
+    {
+      "t": 2800,
+      "h": "197d0411"
+    },
+    {
+      "t": 2900,
+      "h": "2229554b"
+    },
+    {
+      "t": 3000,
+      "h": "6ce0e4a2"
+    }
+  ]
+}
