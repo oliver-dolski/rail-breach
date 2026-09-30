@@ -517,6 +517,21 @@ button.plain:disabled {
   overflow-wrap: anywhere;
 }
 
+.llm {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.llm summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.llm summary:focus-visible {
+  outline: 2px solid var(--detection);
+  outline-offset: 1px;
+}
+
 .legend {
   margin: 0;
   padding: 0;

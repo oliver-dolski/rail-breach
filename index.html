@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <meta name="color-scheme" content="dark" />
     <meta
@@ -122,6 +122,32 @@
           <div id="freetext-chips" class="chips" aria-live="polite"></div>
           <p id="freetext-note" class="muted" aria-live="polite"></p>
           <button type="button" id="freetext-run" class="plain" disabled>Run</button>
+          <details class="llm">
+            <summary>Use your own LLM key (optional)</summary>
+            <p class="muted">
+              Without a key the text is read offline by keywords. With one, pressing Interpret
+              sends the text and the technique list from this browser to the provider's API, and
+              any problem falls back to keywords. The key stays in this tab only and is never
+              recorded or shown again.
+            </p>
+            <div class="field-row">
+              <input
+                id="llm-key"
+                class="field"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="API key"
+                aria-label="LLM API key"
+              />
+              <button type="button" id="llm-save" class="plain">Use key</button>
+            </div>
+            <div class="field-row">
+              <select id="llm-model" class="field" aria-label="LLM model"></select>
+              <button type="button" id="llm-forget" class="plain">Forget key</button>
+            </div>
+            <p id="llm-status" class="muted" aria-live="polite"></p>
+          </details>
         </section>
 
         <section class="block">

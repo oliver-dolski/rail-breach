@@ -4,6 +4,7 @@ import { network } from "../content/network";
 import { techniques } from "../content/techniques";
 import { buildMapperContext } from "../mapper/context";
 import { keywordMapper } from "../mapper/keyword";
+import { createLlmMapper } from "../mapper/llm";
 import recordingJson from "../recordings/phishing-dispatcher.json";
 import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
@@ -21,10 +22,12 @@ import {
 import { createLabels } from "../ui/labels";
 import { createDefensePalette } from "../ui/panel/defense";
 import { createFreeText } from "../ui/panel/freetext";
+import { createKeyPanel } from "../ui/panel/llmkey";
 import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
 import { createPicker } from "../ui/panel/picker";
 import { createRefreshGate } from "../ui/panel/refresh";
+import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
 import { createAttractSession } from "./session";
@@ -76,9 +79,11 @@ function boot(): void {
   });
   const mapperContext = buildMapperContext(network, techniques);
   createPicker(document, { ctx: mapperContext, onAction: (action) => session.dispatch(action) });
+  // With no key the LLM mapper hands straight over to the keywords, and it does so on any failure too.
+  const keyPanel = createKeyPanel(document, keystore);
   createFreeText(document, {
     ctx: mapperContext,
-    mapper: keywordMapper,
+    mapper: createLlmMapper({ keystore, fallback: keywordMapper, model: keyPanel.model }),
     onAction: (action) => session.dispatch(action),
   });
   const ring = new ParticleRing();

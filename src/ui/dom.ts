@@ -1,7 +1,7 @@
 /**
  * Tiny DOM helpers. Text always goes in through textContent or text nodes, never
  * innerHTML: labels, log lines and refusal reasons come from content and from
- * the engine, and this page will later sit next to an API key in sessionStorage.
+ * the engine, and this page sits next to an API key the viewer may enter.
  */
 
 export interface Textual {

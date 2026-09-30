@@ -101,11 +101,13 @@ describe("the static still", () => {
 describe("the page shell", () => {
   const html = readFileSync("index.html", "utf8");
 
-  it("allows only its own origin in the content security policy", () => {
+  it("allows only its own origin in the content security policy, plus the provider API for connections", () => {
     const csp = /Content-Security-Policy"\s+content="([^"]+)"/.exec(html)?.[1] ?? "";
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("script-src 'self'");
-    expect(csp).not.toMatch(/https?:|\*|unsafe-eval/);
+    expect(csp).not.toMatch(/\*|unsafe-eval/);
+    // The one outside origin is the LLM API, and only for connect-src (see tests/app/csp.test.ts).
+    expect(csp.match(/https?:\/\/[^\s;]+/g)).toEqual(["https://api.anthropic.com"]);
   });
 
   it("pulls in no third-party script, style or font", () => {
