@@ -61,5 +61,5 @@ export const tinyTopology: Content = {
     { id: "c-corp-ctl", zoneA: "corp", zoneB: "ctl", name: "Corporate to control" },
   ],
   interlockings: [{ id: "IL-1", label: "Interlocking IL-1" }],
-  trains: [{ id: "TR-1", startPosDm: 0 }],
+  tracks: { vmaxDmPerTick: 33, blocks: [], points: [], signals: [], routes: [], services: [] },
 };

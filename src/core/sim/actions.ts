@@ -1,6 +1,8 @@
+import { enqueueRequest } from "../rail/interlocking";
 import { chance } from "../rng";
 import { PURPOSE_TECHNIQUE_SUCCESS } from "./constants";
 import type { SimEvent } from "./events";
+import type { Index } from "./model";
 import type { World } from "./world";
 
 /**
@@ -9,7 +11,11 @@ import type { World } from "./world";
  */
 export type Action =
   | { type: "noop" }
-  | { type: "technique.launch"; technique: string; target: string };
+  | { type: "technique.launch"; technique: string; target: string }
+  /** Ask an interlocking to set a route. The interlocking may refuse. */
+  | { type: "route.request"; route: string }
+  /** Ask an interlocking to cancel a route it holds. Always a restrictive request. */
+  | { type: "route.cancel"; route: string };
 
 /** Runtime guard for untrusted input such as a parsed recording. Extend with the union. */
 export function isAction(value: unknown): value is Action {
@@ -20,6 +26,9 @@ export function isAction(value: unknown): value is Action {
       return true;
     case "technique.launch":
       return typeof v.technique === "string" && typeof v.target === "string";
+    case "route.request":
+    case "route.cancel":
+      return typeof v.route === "string";
     default:
       return false;
   }
@@ -32,10 +41,23 @@ const PLACEHOLDER_SUCCESS_PERMILLE = 700;
  * Applies one action to a world that step() has already cloned. `tick` is the
  * tick this step produces; it stamps events and keys the dice.
  */
-export function applyAction(world: World, action: Action, tick: number, events: SimEvent[]): void {
+export function applyAction(
+  world: World,
+  action: Action,
+  tick: number,
+  events: SimEvent[],
+  index?: Index,
+): void {
   switch (action.type) {
     case "noop":
       return;
+    case "route.request":
+    case "route.cancel": {
+      if (index === undefined) return;
+      const kind = action.type === "route.request" ? "set" : "cancel";
+      enqueueRequest(world, index, action.route, kind, "operator", events);
+      return;
+    }
     case "technique.launch": {
       const node = world.nodes.find((n) => n.id === action.target);
       if (node === undefined) {

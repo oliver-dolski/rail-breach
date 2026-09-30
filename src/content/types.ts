@@ -8,7 +8,6 @@ export type NodeId = string;
 export type LinkId = string;
 export type ConduitId = string;
 export type InterlockingId = string;
-export type TrainId = string;
 export type Protocol = string;
 export type Role = string;
 export type Tag = string;
@@ -77,10 +76,94 @@ export interface InterlockingDef {
   label: string;
 }
 
-export interface TrainDef {
-  id: TrainId;
-  /** Starting position along the line, in decimetres. */
-  startPosDm: number;
+export type BlockId = string;
+/** Axle-counter section: the unit of occupancy detection. Blocks may share one. */
+export type SectionId = string;
+export type SignalId = string;
+export type PointId = string;
+export type RouteId = string;
+export type ServiceId = string;
+export type PointPos = "normal" | "reverse";
+
+/**
+ * A directed stretch of track. Position is measured along the direction of
+ * travel, so a signal at atDm === lengthDm stands at the far end of the block.
+ * A single-track stretch used both ways is two blocks that share one section.
+ */
+export interface BlockDef {
+  id: BlockId;
+  section: SectionId;
+  lengthDm: number;
+  /** Blocks a train can enter from the far end of this one. */
+  next: BlockId[];
+  /** The object controller that evaluates this section's axle counters. */
+  controller: NodeId;
+}
+
+export interface PointDef {
+  id: PointId;
+  interlocking: InterlockingId;
+  controller: NodeId;
+  /** Ticks the blades take to move; the point is only detected once they arrive. */
+  movingTicks: number;
+  toe: BlockId;
+  normal: BlockId;
+  reverse: BlockId;
+  /** Sections that must be clear of trains before the blades may move. */
+  zone: SectionId[];
+}
+
+export interface SignalDef {
+  id: SignalId;
+  block: BlockId;
+  /** Offset from the start of the block. Signals stand at the far end of their block. */
+  atDm: number;
+  controller: NodeId;
+  interlocking: InterlockingId;
+  /** Safety distance past the signal. Must cover the emergency braking distance at vmax. */
+  overlapDm: number;
+}
+
+export interface RoutePoint {
+  point: PointId;
+  pos: PointPos;
+}
+
+export interface RouteDef {
+  id: RouteId;
+  interlocking: InterlockingId;
+  entrySignal: SignalId;
+  /** Blocks the train runs over after the entry signal, in order. */
+  blocks: BlockId[];
+  points: RoutePoint[];
+  /** Blocks beyond the route's end signal that must stay clear. */
+  overlap: BlockId[];
+}
+
+export interface StopDef {
+  /** The train halts at the far end of this block. */
+  block: BlockId;
+  dwellTicks: number;
+}
+
+/** A timetabled service: departures at firstTick + n * headwayTicks, n < count. */
+export interface ServiceDef {
+  id: ServiceId;
+  path: BlockId[];
+  stops: StopDef[];
+  firstTick: number;
+  headwayTicks: number;
+  count: number;
+}
+
+export interface TrackContent {
+  /** Line speed in decimetres per tick. */
+  vmaxDmPerTick: number;
+  blocks: BlockDef[];
+  points: PointDef[];
+  signals: SignalDef[];
+  routes: RouteDef[];
+  services: ServiceDef[];
 }
 
 export interface Content {
@@ -89,5 +172,5 @@ export interface Content {
   links: LinkDef[];
   conduits: ConduitDef[];
   interlockings: InterlockingDef[];
-  trains: TrainDef[];
+  tracks: TrackContent;
 }

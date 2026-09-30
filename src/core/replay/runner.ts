@@ -1,6 +1,7 @@
 import { stateHash } from "../hash";
 import { CHECKPOINT_INTERVAL_TICKS } from "../sim/constants";
 import type { SimEvent } from "../sim/events";
+import type { Index } from "../sim/model";
 import { step } from "../sim/step";
 import type { World } from "../sim/world";
 import type { Checkpoint } from "./recording";
@@ -33,7 +34,7 @@ export interface Runner {
  * the world and, when the source knows the recorded hash for that tick,
  * compares and throws ReplayMismatchError on divergence.
  */
-export function createRunner(initial: World, source: ActionSource): Runner {
+export function createRunner(initial: World, source: ActionSource, index?: Index): Runner {
   let world = initial;
   let pending: SimEvent[] = [];
   const taken: Checkpoint[] = [];
@@ -45,7 +46,7 @@ export function createRunner(initial: World, source: ActionSource): Runner {
       if (!Number.isInteger(n) || n < 0)
         throw new Error("advance: n must be a non-negative integer");
       for (let i = 0; i < n; i++) {
-        const result = step(world, source.due(world.tick + 1));
+        const result = step(world, source.due(world.tick + 1), index);
         world = result.world;
         for (const event of result.events) pending.push(event);
         if (world.tick % CHECKPOINT_INTERVAL_TICKS === 0) {

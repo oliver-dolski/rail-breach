@@ -1,4 +1,4 @@
-import type { Content } from "../../content/types";
+import type { Content, NodeKind, PointPos } from "../../content/types";
 import { internKey } from "../rng";
 
 /**
@@ -16,6 +16,9 @@ export interface NodeState {
   id: string;
   /** Interned uint32 of the id, used as a dice key. Computed at createWorld. */
   key: number;
+  kind: NodeKind;
+  /** Interlocking this node belongs to, or "" for nodes outside the track side. */
+  controls: string;
   /** 0 clean, 1 user-level foothold, 2 admin/system. */
   integrity: Integrity;
   availability: Availability;
@@ -26,17 +29,64 @@ export interface NodeState {
   discovered: boolean;
 }
 
+export type RequestSource = "ctc" | "operator";
+
+export interface RouteRequest {
+  route: string;
+  kind: "set" | "cancel";
+  by: RequestSource;
+  /** Tick the request entered the queue. */
+  tick: number;
+}
+
+/** A route the interlocking holds. `used` turns true once a train enters it. */
+export interface RouteLock {
+  route: string;
+  used: boolean;
+}
+
 export interface InterlockingState {
   id: string;
+  /** Latest restrictive input from the cyber side, copied in by the interlocking step. */
   health: "ok" | "down";
+  cmdBlocked: boolean;
+  /** Sorted by route id. */
+  locks: RouteLock[];
+  /** FIFO; processed in (tick, route) order so ties are deterministic. */
+  queue: RouteRequest[];
+}
+
+export interface PointState {
+  id: string;
+  pos: PointPos;
+  target: PointPos;
+  /** Ticks until the blades arrive at target; 0 means detected. */
+  moving: number;
 }
 
 export interface TrainState {
   id: string;
-  /** Decimetres along the line. */
+  service: string;
+  /** Decimetres from the start of the service path to the front of the train. */
   posDm: number;
   /** Decimetres per tick. */
   speedDmPerTick: number;
+  /** Index of the next signal on the service path the front has not yet passed. */
+  sig: number;
+  /** Index of the next timetabled stop not yet served. */
+  stop: number;
+  /** Ticks left of a dwell or recovery wait; the train does not move while > 0. */
+  dwell: number;
+  /** Index of a path signal passed at danger, or -1. */
+  overrun: number;
+  /** Tick of the last route request made for this train. */
+  lastReq: number;
+}
+
+export interface ServiceState {
+  id: string;
+  /** Departures already released to the network. */
+  released: number;
 }
 
 export interface World {
@@ -45,6 +95,12 @@ export interface World {
   nodes: NodeState[];
   interlockings: InterlockingState[];
   trains: TrainState[];
+  points: PointState[];
+  services: ServiceState[];
+  /** Sections the interlocking must treat as occupied (restrictive input, sorted). */
+  disturbed: string[];
+  /** Signals forced dark by a failed object controller (restrictive input, sorted). */
+  darkSignals: string[];
 }
 
 /** Total order on ids: ties are impossible because ids are unique. */
@@ -58,6 +114,8 @@ export function createWorld(content: Content, seed: number): World {
   const nodes: NodeState[] = [...content.nodes].sort(compareId).map((def) => ({
     id: def.id,
     key: internKey(def.id),
+    kind: def.kind,
+    controls: def.controls ?? "",
     integrity: 0,
     availability: "ok",
     view: "ok",
@@ -67,11 +125,24 @@ export function createWorld(content: Content, seed: number): World {
   }));
   const interlockings: InterlockingState[] = [...content.interlockings]
     .sort(compareId)
-    .map((def) => ({ id: def.id, health: "ok" }));
-  const trains: TrainState[] = [...content.trains]
+    .map((def) => ({ id: def.id, health: "ok", cmdBlocked: false, locks: [], queue: [] }));
+  const points: PointState[] = [...content.tracks.points]
     .sort(compareId)
-    .map((def) => ({ id: def.id, posDm: def.startPosDm, speedDmPerTick: 0 }));
-  return { tick: 0, seed: seed >>> 0, nodes, interlockings, trains };
+    .map((def) => ({ id: def.id, pos: "normal", target: "normal", moving: 0 }));
+  const services: ServiceState[] = [...content.tracks.services]
+    .sort(compareId)
+    .map((def) => ({ id: def.id, released: 0 }));
+  return {
+    tick: 0,
+    seed: seed >>> 0,
+    nodes,
+    interlockings,
+    trains: [],
+    points,
+    services,
+    disturbed: [],
+    darkSignals: [],
+  };
 }
 
 /** Hand-written clone: keeps the core free of host APIs such as structuredClone. */
@@ -80,7 +151,15 @@ export function cloneWorld(world: World): World {
     tick: world.tick,
     seed: world.seed,
     nodes: world.nodes.map((n) => ({ ...n })),
-    interlockings: world.interlockings.map((i) => ({ ...i })),
+    interlockings: world.interlockings.map((i) => ({
+      ...i,
+      locks: i.locks.map((l) => ({ ...l })),
+      queue: i.queue.map((q) => ({ ...q })),
+    })),
     trains: world.trains.map((t) => ({ ...t })),
+    points: world.points.map((p) => ({ ...p })),
+    services: world.services.map((s) => ({ ...s })),
+    disturbed: [...world.disturbed],
+    darkSignals: [...world.darkSignals],
   };
 }

@@ -28,7 +28,6 @@ export function validateContent(content: Content): void {
   idSet("link", content.links);
   const conduits = idSet("conduit", content.conduits);
   const interlockings = idSet("interlocking", content.interlockings);
-  idSet("train", content.trains);
 
   const zoneOf = new Map<string, string>();
   for (const node of content.nodes) {
@@ -99,12 +98,6 @@ export function validateContent(content: Content): void {
           );
         }
       }
-    }
-  }
-
-  for (const train of content.trains) {
-    if (!Number.isInteger(train.startPosDm)) {
-      problems.push(`train "${train.id}" startPosDm must be an integer`);
     }
   }
 
