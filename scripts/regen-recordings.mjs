@@ -23,16 +23,17 @@ try {
   const load = (path) => server.ssrLoadModule(path);
   const { network } = await load("/src/content/network.ts");
   const { techniques } = await load("/src/content/techniques/index.ts");
-  const { phishingDispatcher } = await load("/src/content/scenarios/phishing-dispatcher.ts");
+  const { scenarios } = await load("/src/content/scenarios/index.ts");
+  const { validateScenario } = await load("/src/content/scenarios/validate.ts");
   const { buildIndex } = await load("/src/core/sim/model.ts");
   const { createWorld } = await load("/src/core/sim/world.ts");
   const { captureRecording } = await load("/src/core/replay/capture.ts");
 
   // The safety check stays on: a scenario that breaks the invariant cannot be recorded.
   const index = buildIndex(network, { techniques, checkInvariants: true });
-  const scenarios = [phishingDispatcher];
 
   for (const scenario of scenarios) {
+    validateScenario(scenario, network, techniques);
     const world = createWorld(network, scenario.seed);
     const recording = captureRecording(world, index, scenario.actions, scenario.durationTicks);
     const file = join(root, "src", "recordings", `${scenario.id}.json`);

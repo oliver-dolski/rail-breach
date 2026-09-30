@@ -1,4 +1,4 @@
-import { restoreNode } from "../attack/effects";
+import { applyEffect, restoreNode } from "../attack/effects";
 import { launchTechnique } from "../attack/ops";
 import { isPlaybookSteps } from "../attack/playbook";
 import type { PlaybookStep } from "../attack/types";
@@ -36,6 +36,12 @@ export type Action =
    */
   | { type: "restore"; node: string }
   /**
+   * Assumed breach: the scenario starts with the intruder already holding a user-level
+   * foothold on this node (an insider, a stolen account). The same monotone foothold write a
+   * technique makes, without the path and the dice; it grants nothing on the railway side.
+   */
+  | { type: "assume.breach"; node: string }
+  /**
    * Put a firewall, a data diode or an IDS sensor on a conduit or a link. The only way a
    * user changes the network. It narrows traffic and raises detection, nothing more.
    */
@@ -56,6 +62,7 @@ const ACTION_KEYS = new Map<string, readonly string[]>([
   ["route.request", ["type", "route"]],
   ["route.cancel", ["type", "route"]],
   ["restore", ["type", "node"]],
+  ["assume.breach", ["type", "node"]],
   ["defense.place", ["type", "kind", "on", "config"]],
   ["defense.remove", ["type", "id"]],
   ["playbook.start", ["type", "steps"]],
@@ -80,6 +87,7 @@ export function isAction(value: unknown): value is Action {
     case "route.cancel":
       return typeof v.route === "string";
     case "restore":
+    case "assume.breach":
       return typeof v.node === "string";
     case "defense.place":
       return (
@@ -135,6 +143,20 @@ export function applyAction(
         return;
       }
       restoreNode(world, action.node, tick, events);
+      return;
+    }
+    case "assume.breach": {
+      if (index === undefined) {
+        events.push({ k: "action.rejected", tick, reason: "no-index" });
+        return;
+      }
+      if (!world.nodes.some((n) => n.id === action.node)) {
+        events.push({ k: "action.rejected", tick, reason: "unknown-node" });
+        return;
+      }
+      if (applyEffect(world, index, action.node, { k: "foothold", priv: 1 })) {
+        events.push({ k: "breach.assumed", tick, node: action.node });
+      }
       return;
     }
     case "defense.place": {

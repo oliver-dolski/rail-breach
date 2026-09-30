@@ -69,7 +69,9 @@
           <h2>Session</h2>
           <dl class="kv">
             <dt>Scenario</dt>
-            <dd id="scenario-title">Phishing to the dispatcher</dd>
+            <dd>
+              <select id="scenario-select" class="field" aria-label="Scenario"></select>
+            </dd>
             <dt>Clock</dt>
             <dd id="clock">00:00</dd>
             <dt>Trains</dt>
@@ -83,6 +85,7 @@
             <dt>Detected</dt>
             <dd id="stat-detect"></dd>
           </dl>
+          <p id="scenario-summary" class="muted"></p>
         </section>
 
         <section class="block">

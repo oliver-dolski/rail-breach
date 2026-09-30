@@ -17,6 +17,10 @@ function play(session: ReturnType<typeof createAttractSession>, untilTick: numbe
   return seen;
 }
 
+/** What the user placed: the recording also starts with its own IDS sensors, which stay. */
+const placedByUser = (session: ReturnType<typeof createAttractSession>) =>
+  session.world().defenses.filter((d) => d.kind !== "ids");
+
 const tms = (session: ReturnType<typeof createAttractSession>) =>
   session.world().nodes.find((n) => n.id === "tms-server");
 
@@ -32,7 +36,7 @@ describe("a defense placed while the recording plays", () => {
     expect(events.some((e) => e.k === "defense.placed")).toBe(true);
     expect(events.some((e) => e.k === "technique.rejected" || e.k === "op.blocked")).toBe(true);
     expect(tms(session)?.cmdBlocked).toBe(false);
-    expect(session.world().defenses.length).toBeGreaterThan(0);
+    expect(placedByUser(session).length).toBeGreaterThan(0);
     // Not the recorded run any more, and the session says so instead of failing.
     expect(session.status().failure).toBeUndefined();
     expect(session.status().held).toBe(true);
@@ -42,7 +46,7 @@ describe("a defense placed while the recording plays", () => {
     const session = createAttractSession();
     session.dispatch(firewall);
     session.advance(1);
-    const placed = session.world().defenses[0];
+    const placed = placedByUser(session)[0];
     expect(placed?.activeFrom).toBe(session.world().tick + DEFENSE_PLACEMENT_LATENCY_TICKS);
   });
 
@@ -58,11 +62,13 @@ describe("a defense placed while the recording plays", () => {
     const session = createAttractSession();
     session.dispatch(firewall);
     play(session, START + 100);
-    const id = session.world().defenses[0]?.id;
+    const id = placedByUser(session)[0]?.id;
     expect(id).toBeDefined();
     session.dispatch({ type: "defense.remove", id: id ?? "" });
     play(session, START + 120);
-    expect(session.world().defenses).toEqual([]);
+    expect(placedByUser(session)).toEqual([]);
+    expect(session.world().defenses.every((d) => d.kind === "ids")).toBe(true);
+    expect(session.world().defenses.length).toBeGreaterThan(0);
   });
 
   it("starting over drops every live action and is the verified recording again", () => {
@@ -74,7 +80,7 @@ describe("a defense placed while the recording plays", () => {
     expect(session.live()).toBe(false);
     expect(session.generation()).toBe(generation + 1);
     expect(session.world().tick).toBe(START);
-    expect(session.world().defenses).toEqual([]);
+    expect(placedByUser(session)).toEqual([]);
     play(session, START + 400);
     expect(tms(session)?.cmdBlocked).toBe(true);
     expect(session.status().failure).toBeUndefined();

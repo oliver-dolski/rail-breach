@@ -6,7 +6,6 @@ import type { World } from "../core/sim/world";
 import { buildMapperContext } from "../mapper/context";
 import { keywordMapper } from "../mapper/keyword";
 import { createLlmMapper } from "../mapper/llm";
-import recordingJson from "../recordings/phishing-dispatcher.json";
 import { AlertFlashes } from "../render/flashes";
 import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
@@ -29,7 +28,9 @@ import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
 import { createPicker } from "../ui/panel/picker";
 import { createRefreshGate } from "../ui/panel/refresh";
+import { createScenarioSelect } from "../ui/panel/scenario";
 import { createViewToggle } from "../ui/panel/viewmode";
+import { catalog, entryFor } from "./catalog";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
@@ -58,22 +59,30 @@ function boot(): void {
   applyPalette(document.documentElement);
   const canvas = byId<HTMLCanvasElement>("map");
 
-  // Attract mode: the committed recording starts playing with no user action.
-  let session: ReturnType<typeof createAttractSession>;
-  try {
-    session = createAttractSession({ recording: recordingJson });
-  } catch (error) {
+  const refuse = (error: unknown): void => {
     const detail = error instanceof Error ? error.message : "unknown error";
     setText(byId("indicator-label"), "safety invariant: not checked");
     setText(byId("indicator-detail"), `The session could not start: ${detail}`);
+  };
+
+  // Attract mode: the first scenario plays from its committed recording with no user action.
+  const first = catalog[0];
+  if (first === undefined) {
+    refuse(new Error("there is no scenario"));
     return;
   }
-  setText(byId("scenario-title"), session.scenario.title);
+  let session: ReturnType<typeof createAttractSession>;
+  try {
+    session = createAttractSession({ scenario: first.scenario, recording: first.recording });
+  } catch (error) {
+    refuse(error);
+    return;
+  }
 
   const names = createNames(layout, techniques);
   const log = new EventLog(names);
   const panel = createPanel(document);
-  const viewContext = createViewContext(network, session.index, layout);
+  let viewContext = createViewContext(network, session.index, layout);
   const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks);
   const defenses = createDefensePalette(document, {
     content: network,
@@ -206,7 +215,37 @@ function boot(): void {
   }
 
   let seenGeneration = session.generation();
-  const gate = createRefreshGate();
+  let gate = createRefreshGate();
+
+  /** Starts another scenario from its own recording and clears everything the last one left on screen. */
+  const switchTo = (id: string): void => {
+    const entry = entryFor(id);
+    if (entry === undefined || entry.scenario.id === session.scenario.id) return;
+    try {
+      session = createAttractSession({ scenario: entry.scenario, recording: entry.recording });
+    } catch (error) {
+      refuse(error);
+      return;
+    }
+    viewContext = createViewContext(network, session.index, layout);
+    seenGeneration = session.generation();
+    gate = createRefreshGate();
+    log.reset();
+    ring.clear();
+    flashes.clear();
+    lastGood = undefined;
+    selector.show(id);
+  };
+  const selector = createScenarioSelect(
+    document,
+    catalog.map((e) => ({
+      id: e.scenario.id,
+      title: e.scenario.title,
+      summary: e.scenario.summary,
+    })),
+    switchTo,
+  );
+  selector.show(session.scenario.id);
   const target = {
     advance(ticks: number): void {
       session.advance(ticks);

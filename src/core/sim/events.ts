@@ -57,6 +57,8 @@ export type SimEvent =
       node: string;
       effect: EffectKind;
     }
+  /** The scenario starts with the intruder already holding `node` (assumed breach). */
+  | { k: "breach.assumed"; tick: number; node: string }
   /** A cyber effect on `node` ended: it timed out or a local restoration removed it. */
   | { k: "effect.cleared"; tick: number; node: string; effect: EffectKind }
   | {

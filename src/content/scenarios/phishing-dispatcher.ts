@@ -1,30 +1,4 @@
-import type { TimedAction } from "../../core/replay/recording";
-
-/**
- * A scenario is an ordered list of already-resolved actions plus the seed that
- * decides every roll. Nothing else is stored: no free text, no key, no output
- * of any model. Replaying it never leaves the engine.
- */
-export interface Scenario {
-  id: string;
-  title: string;
-  seed: number;
-  /**
-   * Tick at which attract mode starts showing the session. The engine runs the
-   * quiet stretch before it in one go, so the viewer meets a railway that is
-   * already busy and sees the first packet within a second, at normal speed.
-   * A playback choice only: it is not part of the recording.
-   */
-  startTick: number;
-  /** Length of the recorded session in ticks (10 ticks are one simulated second). */
-  durationTicks: number;
-  actions: TimedAction[];
-}
-
-const launch = (t: number, technique: string, target: string): TimedAction => ({
-  t,
-  a: { type: "technique.launch", technique, target },
-});
+import { launch, type Scenario, sensorOn } from "./types";
 
 /**
  * Phishing to the dispatcher: a message lands on the dispatcher's office
@@ -49,10 +23,17 @@ const launch = (t: number, technique: string, target: string): TimedAction => ({
 export const phishingDispatcher: Scenario = {
   id: "phishing-dispatcher",
   title: "Phishing to the dispatcher",
+  summary:
+    "An attachment opened in the dispatcher's office gives the intruder a first foothold; the chain reaches the traffic management server.",
   seed: 6,
   startTick: 30631,
   durationTicks: 31900,
+  initialFootholds: [],
   actions: [
+    // Monitoring that was already in place at the start, placed during the quiet stretch.
+    // Sensors only add alerts, so the railway story below is the same with or without them.
+    sensorOn(2, "c-corp-dmz"),
+    sensorOn(2, "c-dmz-ctrl"),
     launch(30641, "T0865", "corp-ws-dispatch"),
     launch(30681, "T0840", "corp-ws-dispatch"),
     launch(30707, "T0886", "dmz-relay"),

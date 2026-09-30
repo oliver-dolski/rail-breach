@@ -1,5 +1,6 @@
 import { network } from "../content/network";
-import { phishingDispatcher, type Scenario } from "../content/scenarios/phishing-dispatcher";
+import { phishingDispatcher, type Scenario } from "../content/scenarios";
+import { validateScenario } from "../content/scenarios/validate";
 import { techniques } from "../content/techniques";
 import type { Content } from "../content/types";
 import { validateContent, validateTechniques } from "../content/validate";
@@ -11,7 +12,7 @@ import type { Action } from "../core/sim/actions";
 import type { SimEvent } from "../core/sim/events";
 import { buildIndex, type Index } from "../core/sim/model";
 import { createWorld, type World } from "../core/sim/world";
-import recordingJson from "../recordings/phishing-dispatcher.json";
+import { recordingFor } from "./catalog";
 
 /** Ticks the final picture stays up before attract mode starts over (10 seconds). */
 export const HOLD_TICKS = 100;
@@ -51,6 +52,13 @@ export interface AttractSession {
   live(): boolean;
   /** Starts the show over from its beginning, dropping every live action. */
   reset(): void;
+  /** The world the show starts from, after the quiet stretch: what a comparison re-runs from. */
+  startWorld(): World;
+  /**
+   * Every action dispatched live since the show started (or was last started over), stamped
+   * with the tick it was applied on, in order. The recorded actions are not among them.
+   */
+  liveActions(): readonly TimedAction[];
   /** Ticks since the start of the show (negative never happens). */
   elapsedTicks(): number;
   /** Counts how many times the show has started over; the UI clears its state on change. */
@@ -72,13 +80,14 @@ export interface SessionOptions {
 export function createAttractSession(options: SessionOptions = {}): AttractSession {
   const scenario = options.scenario ?? phishingDispatcher;
   const content = options.content ?? network;
-  const raw: unknown = options.recording ?? recordingJson;
+  const raw: unknown = options.recording ?? recordingFor(scenario.id);
   assertRecording(raw);
   const recording: Recording = raw;
 
   // Authoring mistakes fail here, whole and named, not as a silent never-succeeds later.
   validateContent(content);
   validateTechniques(techniques, content);
+  validateScenario(scenario, content, techniques);
 
   // The safety check stays on: every tick of the run is asserted, and a breach throws.
   const index = buildIndex(content, { techniques, checkInvariants: true });
@@ -157,6 +166,8 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
       }
       queue.enqueue(stampAction(runner.view(), action));
     },
+    startWorld: () => snapshot,
+    liveActions: () => queue.all(),
     live: () => forked,
     reset: restart,
     status: () => ({ held, violations, checkedTicks, failure }),
@@ -176,8 +187,10 @@ export function stampAction(world: World, action: Action): TimedAction {
  */
 export class LiveQueue implements ActionSource {
   private readonly byTick = new Map<number, Action[]>();
+  private readonly list: TimedAction[] = [];
 
   enqueue(stamped: TimedAction): void {
+    this.list.push(stamped);
     const bucket = this.byTick.get(stamped.t);
     if (bucket) bucket.push(stamped.a);
     else this.byTick.set(stamped.t, [stamped.a]);
@@ -185,5 +198,10 @@ export class LiveQueue implements ActionSource {
 
   due(tick: number): readonly Action[] {
     return this.byTick.get(tick) ?? [];
+  }
+
+  /** Everything queued so far, in the order it was dispatched. */
+  all(): readonly TimedAction[] {
+    return this.list;
   }
 }

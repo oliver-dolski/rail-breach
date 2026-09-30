@@ -1,5 +1,5 @@
 import { network } from "../../src/content/network";
-import { phishingDispatcher } from "../../src/content/scenarios/phishing-dispatcher";
+import { phishingDispatcher, type Scenario } from "../../src/content/scenarios";
 import { techniques } from "../../src/content/techniques";
 import type { Content } from "../../src/content/types";
 import type { TimedAction } from "../../src/core/replay/recording";
@@ -53,7 +53,16 @@ export function run(
   return { world: current, events };
 }
 
-export const scenario = phishingDispatcher;
+/**
+ * The phishing scenario as the engine tests use it: its attack chain only. The recording
+ * also starts with two IDS sensors already in place; tests that place defenses themselves,
+ * or count them, rely on the bare chain, so those placements are left out here and
+ * covered where the recording itself is tested.
+ */
+export const scenario: Scenario = {
+  ...phishingDispatcher,
+  actions: phishingDispatcher.actions.filter((x) => x.a.type === "technique.launch"),
+};
 
 /** The scenario's world at tick 0 with its recorded seed. */
 export const startWorld = (): World => createWorld(network, scenario.seed);
