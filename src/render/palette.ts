@@ -6,6 +6,8 @@
  *               mistaken for an alert.
  *  ALERT_HUES   magenta, violet, blue, cyan. Attacker traffic, compromised,
  *               lost and degraded nodes, detections.
+ *  DEFENSE_HUES a yellow-green of its own for what the defender places: firewalls
+ *               and diodes. IDS sensors use the detection cyan.
  *
  * Hues are degrees on the HSL wheel. Everything else on the map is a
  * desaturated neutral that carries no hue at all.
@@ -17,6 +19,9 @@ export type Rgba = readonly [number, number, number, number];
 export const SIGNAL_HUES = { stop: 4, caution: 40, proceed: 140 } as const;
 
 export const ALERT_HUES = { attacker: 318, impact: 268, degraded: 222, detection: 186 } as const;
+
+/** Half way between the amber and the green of the signals, 48 to 52 degrees from each. */
+export const DEFENSE_HUES = { barrier: 92 } as const;
 
 /** Hue, saturation and lightness (degrees, 0..1, 0..1) to linear-enough sRGB in 0..1. */
 export function hsl(h: number, s: number, l: number): Rgb {
@@ -66,6 +71,10 @@ export const ALERT_COLORS = {
   impact: hsl(ALERT_HUES.impact, 0.85, 0.68),
   degraded: hsl(ALERT_HUES.degraded, 0.85, 0.66),
   detection: hsl(ALERT_HUES.detection, 0.9, 0.58),
+} as const;
+
+export const DEFENSE_COLORS = {
+  barrier: hsl(DEFENSE_HUES.barrier, 0.72, 0.56),
 } as const;
 
 /** Greys with a faint cool tint: saturation stays below the level hueOf reads as a hue. */

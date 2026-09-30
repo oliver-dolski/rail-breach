@@ -8,6 +8,7 @@ import {
   isDefenseKind,
   isDefenseTarget,
   placeDefense,
+  removeDefense,
 } from "../net/defenses";
 import { enqueueRequest } from "../rail/interlocking";
 import { DEFENSE_PLACEMENT_LATENCY_TICKS } from "./constants";
@@ -36,7 +37,9 @@ export type Action =
    * Put a firewall, a data diode or an IDS sensor on a conduit or a link. The only way a
    * user changes the network. It narrows traffic and raises detection, nothing more.
    */
-  | { type: "defense.place"; kind: DefenseKind; on: DefenseTarget; config?: DefenseConfig };
+  | { type: "defense.place"; kind: DefenseKind; on: DefenseTarget; config?: DefenseConfig }
+  /** Take a placed defense away, by the id the placement was given. */
+  | { type: "defense.remove"; id: string };
 
 /** The keys each action type may carry, and no others. */
 const ACTION_KEYS = new Map<string, readonly string[]>([
@@ -46,6 +49,7 @@ const ACTION_KEYS = new Map<string, readonly string[]>([
   ["route.cancel", ["type", "route"]],
   ["restore", ["type", "node"]],
   ["defense.place", ["type", "kind", "on", "config"]],
+  ["defense.remove", ["type", "id"]],
 ]);
 
 /**
@@ -74,6 +78,8 @@ export function isAction(value: unknown): value is Action {
         isDefenseTarget(v.on) &&
         (v.config === undefined || isDefenseConfig(v.config))
       );
+    case "defense.remove":
+      return typeof v.id === "string";
     default:
       return false;
   }
@@ -128,5 +134,8 @@ export function applyAction(
       placeDefense(world, index, action, tick, DEFENSE_PLACEMENT_LATENCY_TICKS, events);
       return;
     }
+    case "defense.remove":
+      removeDefense(world, action.id, tick, events);
+      return;
   }
 }

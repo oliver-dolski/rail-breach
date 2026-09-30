@@ -281,7 +281,10 @@ describe("defenses cannot reach the railway", () => {
   it("the defense module reads and writes only the defense list and its counter", () => {
     const source = code("src/core/net/defenses.ts");
     expect(fields(source, /\bworld\.(\w+)/g)).toEqual(["defenseSeq", "defenses"]);
-    expect(fields(source, /\bworld\.(\w+)\s*(?:=|\+=|-=)(?!=)/g)).toEqual(["defenseSeq"]);
+    expect(fields(source, /\bworld\.(\w+)\s*(?:=|\+=|-=)(?!=)/g)).toEqual([
+      "defenseSeq",
+      "defenses",
+    ]);
   });
 
   it("a placement changes nothing in the world except the defense list and its counter", () => {
@@ -291,5 +294,205 @@ describe("defenses cannot reach the railway", () => {
     const { defenses: d0, defenseSeq: s0, tick: t0, ...rest0 } = before;
     expect(rest).toEqual(rest0);
     expect([defenses.length > 0, defenseSeq, tick, d0, s0, t0]).toEqual([true, 1, 2, [], 0, 0]);
+  });
+});
+
+type PlaceAction = Extract<Action, { type: "defense.place" }>;
+const diodeOn = (conduit: string, direction: "a-to-b" | "b-to-a"): PlaceAction => ({
+  type: "defense.place",
+  kind: "diode",
+  on: { conduit },
+  config: { direction },
+});
+
+describe("a data diode", () => {
+  const settle = DEFENSE_PLACEMENT_LATENCY_TICKS + 1;
+  const link = linkOf(HMI_LINK);
+
+  it("lets data pass the way it is set to and stops the reverse, on the same link", () => {
+    const onLink = (direction: "a-to-b" | "b-to-a"): PlaceAction => ({
+      type: "defense.place",
+      kind: "diode",
+      on: { link: HMI_LINK },
+      config: { direction },
+    });
+    const towardsB = run(createWorld(network, 1), index, [{ t: 1, a: onLink("a-to-b") }], settle);
+    const permits = (w: typeof towardsB.world, from: string, to: string) =>
+      linkAllows(link, "remote-services", from, to, w, settle);
+    expect(permits(towardsB.world, link.a, link.b)).toBe(true);
+    expect(permits(towardsB.world, link.b, link.a)).toBe(false);
+
+    const towardsA = run(createWorld(network, 1), index, [{ t: 1, a: onLink("b-to-a") }], settle);
+    expect(permits(towardsA.world, link.a, link.b)).toBe(false);
+    expect(permits(towardsA.world, link.b, link.a)).toBe(true);
+  });
+
+  it("is in force only from activeFrom, like every defense", () => {
+    const { world } = run(
+      createWorld(network, 1),
+      index,
+      [{ t: 1, a: diodeOn(DMZ_TO_CONTROL, "b-to-a") }],
+      1,
+    );
+    const activeFrom = 1 + DEFENSE_PLACEMENT_LATENCY_TICKS;
+    const crossing = (tick: number) =>
+      linkAllows(link, "remote-services", link.a, link.b, world, tick);
+    expect(crossing(activeFrom - 1)).toBe(true);
+    expect(crossing(activeFrom)).toBe(false);
+  });
+
+  it("carries the legitimate telemetry in its direction while it stops the attacker's way in", () => {
+    // Zone A is the DMZ, zone B the control centre: b-to-a lets data go out to the DMZ.
+    const { world } = run(
+      createWorld(network, 1),
+      index,
+      [{ t: 1, a: diodeOn(DMZ_TO_CONTROL, "b-to-a") }],
+      settle,
+    );
+    const hist = linkOf("l-dmz-hist");
+    expect(linkAllows(hist, "historian-mirror", "historian", "dmz-relay", world, settle)).toBe(
+      true,
+    );
+    expect(linkAllows(hist, "historian-mirror", "dmz-relay", "historian", world, settle)).toBe(
+      false,
+    );
+    expect(linkAllows(link, "remote-services", "dmz-relay", "dispatch-hmi-1", world, settle)).toBe(
+      false,
+    );
+  });
+
+  it("stops the phishing chain at the boundary when it lets data out only", () => {
+    const actions = [
+      ...scenario.actions,
+      place(hmiLaunchTick - 100, diodeOn(DMZ_TO_CONTROL, "b-to-a")),
+    ];
+    const { world } = run(warmWorld(index), index, actions, END);
+    expect(nodeOf(world, "dispatch-hmi-1").integrity).toBe(0);
+    expect(nodeOf(world, "tms-server").cmdBlocked).toBe(false);
+  });
+
+  it("stops a payload in flight when it comes into force, as op.blocked", () => {
+    const landing = hopLands(hmiLaunchTick, HMI_LINK);
+    const actions = [
+      ...scenario.actions,
+      place(landing - DEFENSE_PLACEMENT_LATENCY_TICKS, diodeOn(DMZ_TO_CONTROL, "b-to-a")),
+    ];
+    const { events } = run(warmWorld(index), index, actions, END);
+    expect(kinds(events, "op.blocked")).toEqual([
+      expect.objectContaining({ link: HMI_LINK, at: "dmz-relay", tick: landing }),
+    ]);
+  });
+
+  it("set the other way round it lets the attacker's direction through", () => {
+    const actions = [
+      ...scenario.actions,
+      place(hmiLaunchTick - 100, diodeOn(DMZ_TO_CONTROL, "a-to-b")),
+    ];
+    const { world } = run(warmWorld(index), index, actions, END);
+    expect(nodeOf(world, "tms-server").cmdBlocked).toBe(true);
+  });
+
+  it("on a conduit, is set between its zones however each link happens to be written", () => {
+    // The same link written the other way round: its first end is now in zone B.
+    const flipped = {
+      ...network,
+      links: network.links.map((l) => (l.id === HMI_LINK ? { ...l, a: l.b, b: l.a } : l)),
+    };
+    const { world } = run(
+      createWorld(flipped, 1),
+      networkIndex(flipped),
+      [{ t: 1, a: diodeOn(DMZ_TO_CONTROL, "a-to-b") }],
+      settle,
+    );
+    const written = flipped.links.find((l) => l.id === HMI_LINK);
+    if (written === undefined) throw new Error("no link");
+    // Zone A (DMZ) to zone B (control centre) is still dmz-relay to dispatch-hmi-1.
+    expect(
+      linkAllows(written, "remote-services", "dmz-relay", "dispatch-hmi-1", world, settle),
+    ).toBe(true);
+    expect(
+      linkAllows(written, "remote-services", "dispatch-hmi-1", "dmz-relay", world, settle),
+    ).toBe(false);
+    expect(world.defenses.find((d) => d.link === HMI_LINK)?.direction).toBe("b-to-a");
+  });
+
+  it("and a firewall on the same link must both agree", () => {
+    const base: TimedAction[] = [
+      { t: 1, a: diodeOn(DMZ_TO_CONTROL, "a-to-b") },
+      { t: 2, a: firewallOn(DMZ_TO_CONTROL, ["remote-services"]) },
+    ];
+    const lenient = run(createWorld(network, 1), index, base, 2 + settle);
+    expect(linkAllows(link, "remote-services", link.a, link.b, lenient.world, 2 + settle)).toBe(
+      true,
+    );
+    const strictActions = [...base, { t: 3, a: firewallOn(DMZ_TO_CONTROL) }];
+    const strict = run(createWorld(network, 1), index, strictActions, 3 + settle);
+    expect(linkAllows(link, "remote-services", link.a, link.b, strict.world, 3 + settle)).toBe(
+      false,
+    );
+  });
+});
+
+describe("an IDS sensor", () => {
+  it("never narrows a link", () => {
+    const sensor: PlaceAction = {
+      type: "defense.place",
+      kind: "ids",
+      on: { conduit: DMZ_TO_CONTROL },
+    };
+    const actions = [...scenario.actions, place(hmiLaunchTick - 100, sensor)];
+    const { world } = run(warmWorld(index), index, actions, END);
+    expect(nodeOf(world, "tms-server").cmdBlocked).toBe(true);
+    expect(world.defenses.every((d) => d.kind === "ids")).toBe(true);
+  });
+});
+
+describe("removing a defense", () => {
+  const remove = (t: number, id: string): TimedAction => ({ t, a: { type: "defense.remove", id } });
+
+  it("takes every instance of the placement away and says so", () => {
+    const actions = [place(1, firewallOn(DMZ_TO_CONTROL)), remove(40, "d1")];
+    const { world, events } = run(createWorld(network, 1), index, actions, 41);
+    expect(world.defenses).toEqual([]);
+    expect(kinds(events, "defense.removed")).toEqual([
+      { k: "defense.removed", tick: 40, id: "d1" },
+    ]);
+  });
+
+  it("reopens the path: the same chain that was stopped now gets through", () => {
+    // Right after the warm-up, long before the console is attacked.
+    const early = scenario.startTick + 5;
+    const stopped = run(
+      warmWorld(index),
+      index,
+      [...scenario.actions, place(early, firewallOn(DMZ_TO_CONTROL))],
+      END,
+    );
+    expect(nodeOf(stopped.world, "tms-server").cmdBlocked).toBe(false);
+
+    const reopened = run(
+      warmWorld(index),
+      index,
+      [...scenario.actions, place(early, firewallOn(DMZ_TO_CONTROL)), remove(early + 60, "d1")],
+      END,
+    );
+    expect(reopened.world.defenses).toEqual([]);
+    expect(nodeOf(reopened.world, "tms-server").cmdBlocked).toBe(true);
+  });
+
+  it("refuses an id that is not placed, without touching the others", () => {
+    const actions = [place(1, firewallOn(DMZ_TO_CONTROL)), remove(5, "d9")];
+    const { world, events } = run(createWorld(network, 1), index, actions, 6);
+    expect(kinds(events, "action.rejected")).toEqual([
+      expect.objectContaining({ reason: "unknown-defense", tick: 5 }),
+    ]);
+    expect(world.defenses.length).toBeGreaterThan(0);
+  });
+
+  it("isAction takes an id and nothing else", () => {
+    expect(isAction({ type: "defense.remove", id: "d1" })).toBe(true);
+    expect(isAction({ type: "defense.remove" })).toBe(false);
+    expect(isAction({ type: "defense.remove", id: 1 })).toBe(false);
+    expect(isAction({ type: "defense.remove", id: "d1", extra: true })).toBe(false);
   });
 });

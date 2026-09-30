@@ -77,6 +77,27 @@
         </section>
 
         <section class="block">
+          <h2>Defenses</h2>
+          <p class="muted">
+            Pick a defense, then click a conduit (a thick line between zones) on the map, or use
+            its button. Segmentation stops the intruder at the boundary.
+          </p>
+          <fieldset id="defense-kind" class="segmented" aria-label="Defense to place">
+            <button type="button" data-kind="firewall" aria-pressed="true">Firewall</button>
+            <button type="button" data-kind="diode" aria-pressed="false">Data diode</button>
+            <button type="button" data-kind="ids" aria-pressed="false">IDS sensor</button>
+          </fieldset>
+          <fieldset id="defense-flow" class="segmented" aria-label="Diode direction" hidden>
+            <button type="button" data-flow="office" aria-pressed="true">Data to office</button>
+            <button type="button" data-flow="tracks" aria-pressed="false">Data to tracks</button>
+          </fieldset>
+          <div id="defense-conduits" class="conduit-list"></div>
+          <ul id="defense-placed" class="placed"></ul>
+          <p id="defense-note" class="muted"></p>
+          <button type="button" id="defense-reset" class="plain">Start over</button>
+        </section>
+
+        <section class="block">
           <h2>Attack chain</h2>
           <div id="chain" class="chain"></div>
           <p id="caption" class="caption"></p>
@@ -102,6 +123,9 @@
             <li><i class="glyph g-lost"></i>operators lost control</li>
             <li><i class="glyph g-stop"></i><i class="glyph g-caution"></i><i class="glyph g-proceed"></i>signal: stop, caution, proceed</li>
             <li><i class="glyph g-packet"></i>attacker traffic</li>
+            <li><i class="glyph g-firewall"></i>firewall</li>
+            <li><i class="glyph g-diode"></i>data diode (arrow: the way data may pass)</li>
+            <li><i class="glyph g-ids"></i>IDS sensor</li>
           </ul>
         </section>
 

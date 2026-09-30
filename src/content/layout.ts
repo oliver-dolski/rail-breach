@@ -41,6 +41,8 @@ export interface Layout {
   /** Extra track drawn between blocks that the block polylines do not cover. */
   connectors: Pt[][];
   stations: StationPlacement[];
+  /** Short on-map caption of each conduit, placed where its links run. */
+  conduits: Record<string, string>;
 }
 
 const pts = (...xy: number[]): Pt[] => {
@@ -136,4 +138,17 @@ export const layout: Layout = {
     { name: "Dunmarrow", x: X.DUN, y: DN_Y + 34 },
     { name: "Pellthorne", x: 1310, y: BR_Y + 32 },
   ],
+  conduits: {
+    "c-net-corp": "Net-Corp",
+    "c-net-vendor": "Net-Vendor",
+    "c-corp-dmz": "Corp-DMZ",
+    "c-dmz-ctrl": "DMZ-Ctrl",
+    "c-vendor-ctrl": "Vendor-Ctrl",
+    "c-ctrl-tav": "Ctrl-TAV",
+    "c-ctrl-vel": "Ctrl-VEL",
+    "c-ctrl-cre": "Ctrl-CRE",
+    "c-tav-way": "TAV-Way",
+    "c-vel-way": "VEL-Way",
+    "c-cre-way": "CRE-Way",
+  },
 };

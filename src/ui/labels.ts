@@ -17,7 +17,12 @@ export interface Labels {
   mark(world: World): void;
 }
 
-export function createLabels(doc: Document, container: HTMLElement, layout: Layout): Labels {
+export function createLabels(
+  doc: Document,
+  container: HTMLElement,
+  layout: Layout,
+  conduitMarks: readonly { id: string; label: string; x: number; y: number }[] = [],
+): Labels {
   interface Item {
     el: HTMLElement;
     x: number;
@@ -40,6 +45,7 @@ export function createLabels(doc: Document, container: HTMLElement, layout: Layo
     nodeEls.set(id, add("lbl lbl-node", n.label, n.x, n.y, 15));
   }
   for (const s of layout.stations) add("lbl lbl-station", s.name, s.x, s.y);
+  for (const c of conduitMarks) add("lbl lbl-conduit", c.label, c.x, c.y, -7);
 
   const lastState = new Map<string, NodeVisualState>();
   return {

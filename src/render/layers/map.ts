@@ -23,8 +23,10 @@ export function drawMap(
   drawLines(gl, prims, view.links, frame);
   drawLines(gl, prims, view.track, frame);
   drawLines(gl, prims, view.routes, frame);
+  drawLines(gl, prims, view.defenseArrows, frame);
   drawLines(gl, prims, view.trains, frame);
   drawDiscs(gl, prims, view.signals, frame);
   drawDiscs(gl, prims, view.halos, frame);
   drawDiscs(gl, prims, view.nodes, frame);
+  drawDiscs(gl, prims, view.defenses, frame);
 }

@@ -3,11 +3,12 @@ import { layout } from "../content/layout";
 import { network } from "../content/network";
 import { techniques } from "../content/techniques";
 import recordingJson from "../recordings/phishing-dispatcher.json";
+import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
-import { ALERT_COLORS, cssColor, SIGNAL_COLORS } from "../render/palette";
+import { ALERT_COLORS, cssColor, DEFENSE_COLORS, SIGNAL_COLORS } from "../render/palette";
 import { ParticleRing, packetParticles } from "../render/particleRing";
 import { MapRenderer } from "../render/renderer";
-import { buildView, createViewContext } from "../render/view";
+import { buildView, createViewContext, nearestConduit } from "../render/view";
 import { setText } from "../ui/dom";
 import {
   CONTEXT_LOST_MESSAGE,
@@ -16,6 +17,7 @@ import {
   showFallback,
 } from "../ui/fallback";
 import { createLabels } from "../ui/labels";
+import { createDefensePalette } from "../ui/panel/defense";
 import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
 import { createRefreshGate } from "../ui/panel/refresh";
@@ -39,6 +41,7 @@ function applyPalette(root: HTMLElement): void {
   set("--impact", cssColor(ALERT_COLORS.impact));
   set("--degraded", cssColor(ALERT_COLORS.degraded));
   set("--detection", cssColor(ALERT_COLORS.detection));
+  set("--defense", cssColor(DEFENSE_COLORS.barrier));
 }
 
 function boot(): void {
@@ -60,8 +63,13 @@ function boot(): void {
   const names = createNames(layout, techniques);
   const log = new EventLog(names);
   const panel = createPanel(document);
-  const labels = createLabels(document, byId("labels"), layout);
   const viewContext = createViewContext(network, session.index, layout);
+  const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks);
+  const defenses = createDefensePalette(document, {
+    content: network,
+    onAction: (action) => session.dispatch(action),
+    onReset: () => session.reset(),
+  });
   const ring = new ParticleRing();
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -118,6 +126,27 @@ function boot(): void {
     new ResizeObserver(resize).observe(canvas);
     watchPixelRatio();
     resize();
+  }
+
+  if (renderer) {
+    // Clicking near a conduit places the armed defense on it. The pick is done here, on
+    // the CPU, against the same layout the map is drawn from.
+    const PICK_RADIUS_PX = 14;
+    const conduitAt = (event: MouseEvent): string | undefined => {
+      const fit = renderer?.geometry();
+      if (!fit) return undefined;
+      const rect = canvas.getBoundingClientRect();
+      const at = screenToMap(fit, dpr, event.clientX - rect.left, event.clientY - rect.top);
+      return nearestConduit(viewContext, at, (PICK_RADIUS_PX * dpr) / fit.scale);
+    };
+    canvas.addEventListener("click", (event) => {
+      const conduit = conduitAt(event);
+      if (conduit !== undefined) defenses.place(conduit);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      const cursor = conduitAt(event) === undefined ? "default" : "pointer";
+      if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
+    });
   }
 
   if (renderer) {
@@ -178,6 +207,7 @@ function boot(): void {
     if (gate.changed(world.tick, session.status())) {
       labels.mark(world);
       panel.update(session, view, log);
+      defenses.update(world, session.live());
     }
   };
 

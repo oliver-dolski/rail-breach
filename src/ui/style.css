@@ -15,6 +15,7 @@
   --impact: #a06cf0;
   --degraded: #5d86f0;
   --detection: #2bc2d6;
+  --defense: #a9d13c;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -50,6 +51,7 @@ body {
 }
 
 .map {
+  cursor: default;
   position: absolute;
   inset: 0;
   width: 100%;
@@ -100,6 +102,13 @@ body {
 
 .lbl-node[data-state="degraded"] {
   color: var(--degraded);
+}
+
+.lbl-conduit {
+  font-size: max(7px, calc(var(--u) * 9px));
+  letter-spacing: 0.06em;
+  color: #7f8b9b;
+  transform: translateX(-50%);
 }
 
 .lbl-station {
@@ -318,6 +327,99 @@ body {
   border-left-color: #4b5666;
 }
 
+.log li.tone-defense {
+  border-left-color: var(--defense);
+}
+
+.log li.tone-detection {
+  border-left-color: var(--detection);
+  color: #bfeaf0;
+}
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 0 6px;
+  padding: 0;
+  border: 0;
+}
+
+.segmented[hidden] {
+  display: none;
+}
+
+.segmented button,
+.conduit-list button,
+.placed button,
+button.plain {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0d131b;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmented button {
+  flex: 1 1 0;
+}
+
+.segmented button[aria-pressed="true"] {
+  border-color: var(--defense);
+  color: var(--defense);
+}
+
+.segmented button:hover,
+.conduit-list button:hover,
+.placed button:hover,
+button.plain:hover {
+  border-color: var(--muted);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--detection);
+  outline-offset: 1px;
+}
+
+.conduit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 6px;
+}
+
+.conduit-list button {
+  font-size: 11px;
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.placed {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 11.5px;
+}
+
+.placed li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0 3px 8px;
+  border-left: 2px solid var(--defense);
+}
+
+.placed-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .legend {
   margin: 0;
   padding: 0;
@@ -392,6 +494,21 @@ body {
 
 .g-proceed {
   background: var(--signal-proceed);
+}
+
+.g-firewall {
+  border-radius: 50%;
+  background: var(--defense);
+}
+
+.g-diode {
+  background: var(--defense);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.g-ids {
+  border: 2px solid var(--detection);
+  border-radius: 50%;
 }
 
 .g-packet {

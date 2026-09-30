@@ -216,3 +216,17 @@ export function placeDefense(
     activeFrom: tick + latencyTicks,
   });
 }
+
+/**
+ * Takes a placement away, every instance it made. An id that is not there is refused
+ * with an event. Removing a defense only reopens links; it never gives the attacker a
+ * foothold or a path it did not already have before the defense went in.
+ */
+export function removeDefense(world: World, id: string, tick: number, events: SimEvent[]): void {
+  if (!world.defenses.some((d) => d.id === id)) {
+    events.push({ k: "action.rejected", tick, reason: "unknown-defense" });
+    return;
+  }
+  world.defenses = world.defenses.filter((d) => d.id !== id);
+  events.push({ k: "defense.removed", tick, id });
+}

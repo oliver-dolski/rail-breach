@@ -1,5 +1,6 @@
 import type { Layout, Pt } from "../content/layout";
 import type { Content, NodeKind } from "../content/types";
+import type { DefenseInstance } from "../core/net/defenses";
 import { deriveAspects } from "../core/rail/interlocking";
 import { computeOccupancy, DISTURBED, OCCUPIED } from "../core/rail/trackGraph";
 import { TRAIN_LENGTH_DM } from "../core/sim/constants";
@@ -8,6 +9,7 @@ import type { NodeState, TrainState, World } from "../core/sim/world";
 import { type Polyline, pointAt, polyline } from "./geometry";
 import {
   ALERT_COLORS,
+  DEFENSE_COLORS,
   NEUTRAL,
   NODE_STYLES,
   type NodeVisualState,
@@ -69,6 +71,10 @@ export interface RenderView {
   signals: DiscInstance[];
   halos: DiscInstance[];
   nodes: DiscInstance[];
+  /** One glyph per placed defense, on the link it guards. Faint until it is in force. */
+  defenses: DiscInstance[];
+  /** The arrow of each diode, showing the way it lets data pass. */
+  defenseArrows: LineInstance[];
   stats: ViewStats;
 }
 
@@ -90,7 +96,9 @@ interface DrawBlock {
 export interface ViewContext {
   index: Index;
   layout: Layout;
-  links: { a: Pt; b: Pt; conduit: boolean }[];
+  links: { id: string; a: Pt; b: Pt; conduit: string }[];
+  /** Where each conduit's caption goes: the mean of the middles of its links. */
+  conduitMarks: { id: string; label: string; x: number; y: number }[];
   zones: LineInstance[];
   blocks: Map<string, Polyline>;
   drawBlocks: DrawBlock[];
@@ -129,8 +137,22 @@ export function createViewContext(content: Content, index: Index, layout: Layout
     const a = layout.nodes[link.a];
     const b = layout.nodes[link.b];
     if (!a || !b) throw new Error(`layout has no position for link ${link.id}`);
-    return { a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y }, conduit: link.conduit !== undefined };
+    return {
+      id: link.id,
+      a: { x: a.x, y: a.y },
+      b: { x: b.x, y: b.y },
+      conduit: link.conduit ?? "",
+    };
   });
+
+  const conduitMarks: ViewContext["conduitMarks"] = [];
+  for (const conduit of content.conduits) {
+    const members = links.filter((l) => l.conduit === conduit.id);
+    if (members.length === 0) continue;
+    const x = members.reduce((sum, l) => sum + (l.a.x + l.b.x) / 2, 0) / members.length;
+    const y = members.reduce((sum, l) => sum + (l.a.y + l.b.y) / 2, 0) / members.length;
+    conduitMarks.push({ id: conduit.id, label: layout.conduits[conduit.id] ?? conduit.name, x, y });
+  }
 
   const zones: LineInstance[] = [];
   for (const z of layout.zones) {
@@ -182,7 +204,121 @@ export function createViewContext(content: Content, index: Index, layout: Layout
     ["front-end-processor", 8.5],
   ]);
 
-  return { index, layout, links, zones, blocks, drawBlocks, connectors, signalAt, radiusOf };
+  return {
+    index,
+    layout,
+    links,
+    conduitMarks,
+    zones,
+    blocks,
+    drawBlocks,
+    connectors,
+    signalAt,
+    radiusOf,
+  };
+}
+
+/** Distance from a point to a segment, in map units. */
+function distanceToSegment(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const f = len2 === 0 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return Math.hypot(p.x - (a.x + f * dx), p.y - (a.y + f * dy));
+}
+
+/**
+ * The conduit whose link runs closest to a point on the map, when one runs within
+ * maxDistance map units; ties go to the lower conduit id. A link inside a zone belongs
+ * to no conduit and is never picked. Pure: this is the map's click target.
+ */
+export function nearestConduit(ctx: ViewContext, at: Pt, maxDistance: number): string | undefined {
+  let best: string | undefined;
+  let bestDistance = maxDistance;
+  for (const link of ctx.links) {
+    if (link.conduit === "") continue;
+    const d = distanceToSegment(at, link.a, link.b);
+    if (d < bestDistance || (d === bestDistance && best !== undefined && link.conduit < best)) {
+      best = link.conduit;
+      bestDistance = d;
+    }
+  }
+  return best;
+}
+
+const DEFENSE_GLYPH_RADIUS = 7;
+/** Glyphs of several defenses on one link sit this far apart along it. */
+const DEFENSE_STACK_STEP = 16;
+
+/**
+ * The glyph of every placed defense, and the arrow of every diode. A firewall is a
+ * filled disc, a diode a triangle with an arrow along the way it lets data pass, an
+ * IDS sensor a ring in the detection colour. One that is not yet in force is drawn
+ * faint and without glow, so the placement delay can be seen.
+ */
+function defenseGlyphs(
+  world: World,
+  ctx: ViewContext,
+  defenses: readonly DefenseInstance[],
+): { glyphs: DiscInstance[]; arrows: LineInstance[] } {
+  const glyphs: DiscInstance[] = [];
+  const arrows: LineInstance[] = [];
+  const byLink = new Map<string, { a: Pt; b: Pt }>();
+  for (const link of ctx.links) byLink.set(link.id, link);
+  const stacked = new Map<string, number>();
+
+  for (const defense of defenses) {
+    const link = byLink.get(defense.link);
+    if (link === undefined) continue;
+    const dx = link.b.x - link.a.x;
+    const dy = link.b.y - link.a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const slot = stacked.get(defense.link) ?? 0;
+    stacked.set(defense.link, slot + 1);
+    const along = slot * DEFENSE_STACK_STEP;
+    const x = (link.a.x + link.b.x) / 2 + ux * along;
+    const y = (link.a.y + link.b.y) / 2 + uy * along;
+    const live = world.tick >= defense.activeFrom;
+    const base = defense.kind === "ids" ? ALERT_COLORS.detection : DEFENSE_COLORS.barrier;
+    const color = rgba(base, live ? 1 : 0.35);
+    const shape =
+      defense.kind === "firewall"
+        ? SHAPE.disc
+        : defense.kind === "diode"
+          ? SHAPE.triangle
+          : SHAPE.ring;
+    glyphs.push({ x, y, radius: DEFENSE_GLYPH_RADIUS, shape, glow: live ? 7 : 0, color });
+
+    if (defense.kind === "diode") {
+      // The arrow runs beside the glyph, along the way the diode lets data pass.
+      const sign = defense.direction === "a-to-b" ? 1 : -1;
+      const fx = ux * sign;
+      const fy = uy * sign;
+      const nx = -fy;
+      const ny = fx;
+      const offset = 13;
+      const tip = { x: x + nx * offset + fx * 11, y: y + ny * offset + fy * 11 };
+      const tail = { x: x + nx * offset - fx * 11, y: y + ny * offset - fy * 11 };
+      const barb = (side: number): LineInstance => ({
+        x0: tip.x,
+        y0: tip.y,
+        x1: tip.x - fx * 6 + nx * 4 * side,
+        y1: tip.y - fy * 6 + ny * 4 * side,
+        width: 1.8,
+        glow: 0,
+        dash: 0,
+        color,
+      });
+      arrows.push(
+        { x0: tail.x, y0: tail.y, x1: tip.x, y1: tip.y, width: 1.8, glow: 0, dash: 0, color },
+        barb(1),
+        barb(-1),
+      );
+    }
+  }
+  return { glyphs, arrows };
 }
 
 export function nodeVisualState(node: NodeState): NodeVisualState {
@@ -264,10 +400,10 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
   const links: LineInstance[] = ctx.links.flatMap((link) =>
     segmentsOf(
       [link.a, link.b],
-      link.conduit ? 2 : 1.4,
+      link.conduit !== "" ? 2 : 1.4,
       0,
       0,
-      rgba(NEUTRAL.link, link.conduit ? 1 : 0.85),
+      rgba(NEUTRAL.link, link.conduit !== "" ? 1 : 0.85),
     ),
   );
 
@@ -377,6 +513,8 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
     });
   }
 
+  const guards = defenseGlyphs(world, ctx, world.defenses);
+
   return {
     tick: world.tick,
     phase,
@@ -388,6 +526,8 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
     signals,
     halos,
     nodes,
+    defenses: guards.glyphs,
+    defenseArrows: guards.arrows,
     stats: {
       trains: world.trains.length,
       trainsStanding: standing,

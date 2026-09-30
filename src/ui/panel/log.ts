@@ -3,7 +3,7 @@ import type { TechniqueDef } from "../../core/attack/types";
 import { TICKS_PER_SECOND } from "../../core/sim/constants";
 import type { SimEvent } from "../../core/sim/events";
 
-export type Tone = "attack" | "effect" | "rail" | "refusal";
+export type Tone = "attack" | "effect" | "rail" | "refusal" | "defense" | "detection";
 
 export interface LogEntry {
   key: string;
@@ -14,6 +14,8 @@ export interface LogEntry {
 
 export interface Names {
   node(id: string): string;
+  /** The short on-map caption of a conduit, or its id when the layout has none. */
+  conduit(id: string): string;
   technique(id: string): { name: string; explain: string } | undefined;
 }
 
@@ -21,6 +23,7 @@ export function createNames(layout: Layout, techniques: readonly TechniqueDef[])
   const byId = new Map(techniques.map((t) => [t.id, t]));
   return {
     node: (id) => layout.nodes[id]?.label ?? id,
+    conduit: (id) => layout.conduits[id] ?? id,
     technique: (id) => {
       const t = byId.get(id);
       return t === undefined ? undefined : { name: t.name, explain: t.explain };
@@ -45,6 +48,19 @@ const NEWSWORTHY_REFUSALS = [
   "interlocking is out of service",
   "is disturbed",
 ];
+
+const KIND_NAME = { firewall: "Firewall", diode: "Data diode", ids: "IDS sensor" } as const;
+
+/** What the log says when a defense action is refused; other refusals are not for the log. */
+const DEFENSE_REFUSALS: Partial<
+  Record<Extract<SimEvent, { k: "action.rejected" }>["reason"], string>
+> = {
+  "unknown-target": "no such conduit or link",
+  "invalid-defense": "the settings do not fit that kind of defense",
+  "already-placed": "the same defense is already there",
+  "defense-limit": "too many defenses are placed",
+  "unknown-defense": "no such defense to remove",
+};
 
 export function isNewsworthyRefusal(event: Extract<SimEvent, { k: "command.rejected" }>): boolean {
   if (event.by !== "ctc") return true;
@@ -189,6 +205,22 @@ export class EventLog {
             );
           }
         }
+        break;
+      }
+      case "defense.placed":
+        this.add(
+          event.tick,
+          start,
+          "defense",
+          `${KIND_NAME[event.kind]} placed on ${event.conduit === "" ? (event.links[0] ?? "a link") : n.conduit(event.conduit)}, in force from ${formatClock(event.activeFrom - start)}`,
+        );
+        break;
+      case "defense.removed":
+        this.add(event.tick, start, "defense", `Defense ${event.id} removed`);
+        break;
+      case "action.rejected": {
+        const why = DEFENSE_REFUSALS[event.reason];
+        if (why !== undefined) this.add(event.tick, start, "defense", `Defense refused: ${why}`);
         break;
       }
       case "interlocking.health":

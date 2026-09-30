@@ -82,7 +82,10 @@ describe("the recorded phishing-dispatcher session", () => {
     expect(runner.checkpoints()).toEqual(recording.checkpoints);
   });
 
-  it("ends on the same hash one tick at a time, in 100-tick chunks and in frame-sized steps", () => {
+  // Four full replays: 1.3 s alone, but several times that while the other files run beside it.
+  it("ends on the same hash one tick at a time, in 100-tick chunks and in frame-sized steps", {
+    timeout: 30_000,
+  }, () => {
     const whole = stateHash(replay(recording, [recording.durationTicks]).view());
     const oneByOne = replay(recording, Array(recording.durationTicks).fill(1));
     const hundreds = replay(recording, Array(recording.durationTicks / 100).fill(100));

@@ -40,6 +40,17 @@ export interface AttractSession {
   /** Returns and clears the events emitted since the last call. */
   drainEvents(): SimEvent[];
   status(): SessionStatus;
+  /**
+   * Hands the engine a live action (a defense, in practice) for the next tick. The first
+   * one forks the show from the current world: the rest of the recording still plays,
+   * with the action added, but the run is no longer the recorded one and its hash
+   * checkpoints are no longer checked. The safety invariant still is, every tick.
+   */
+  dispatch(action: Action): void;
+  /** True once a live action has forked the show; false again after a restart. */
+  live(): boolean;
+  /** Starts the show over from its beginning, dropping every live action. */
+  reset(): void;
   /** Ticks since the start of the show (negative never happens). */
   elapsedTicks(): number;
   /** Counts how many times the show has started over; the UI clears its state on change. */
@@ -86,8 +97,13 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
   let violations: readonly string[] = [];
   let failure: string | undefined;
 
+  let queue = new LiveQueue();
+  let forked = false;
+
   const restart = (): void => {
     runner = createRunner(snapshot, source, index);
+    queue = new LiveQueue();
+    forked = false;
     previous = undefined;
     pending = [];
     generation++;
@@ -129,6 +145,20 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
       pending = [];
       return out;
     },
+    dispatch(action) {
+      if (failure !== undefined || !held) return;
+      if (!forked) {
+        // The recorded actions still due keep coming; nothing is verified against them any more.
+        const merged: ActionSource = {
+          due: (tick) => [...source.due(tick), ...queue.due(tick)],
+        };
+        runner = createRunner(runner.view(), merged, index);
+        forked = true;
+      }
+      queue.enqueue(stampAction(runner.view(), action));
+    },
+    live: () => forked,
+    reset: restart,
     status: () => ({ held, violations, checkedTicks, failure }),
     elapsedTicks: () => Math.max(0, runner.view().tick - scenario.startTick),
     generation: () => generation,

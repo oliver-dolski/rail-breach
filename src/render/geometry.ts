@@ -57,6 +57,14 @@ export function fitMap(canvasW: number, canvasH: number, mapW: number, mapH: num
   return { scale, ox: (canvasW - mapW * scale) / 2, oy: (canvasH - mapH * scale) / 2 };
 }
 
+/**
+ * A point in CSS pixels inside the canvas, as map units: the inverse of how a label is
+ * placed, (ox + x * scale) / dpr. The fit is in device pixels, hence the ratio.
+ */
+export function screenToMap(fit: Fit, dpr: number, cssX: number, cssY: number): Pt {
+  return { x: (cssX * dpr - fit.ox) / fit.scale, y: (cssY * dpr - fit.oy) / fit.scale };
+}
+
 /** The map-to-clip transform the shaders take as `uView`: [sx, sy, ox, oy]. */
 export function viewUniform(
   fit: Fit,

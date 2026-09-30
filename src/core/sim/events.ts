@@ -16,7 +16,9 @@ export type RejectReason =
   | "invalid-defense"
   /** A defense that would change nothing because the same one is already there. */
   | "already-placed"
-  | "defense-limit";
+  | "defense-limit"
+  /** A defense.remove for an id that is not placed. */
+  | "unknown-defense";
 
 /**
  * Derived output of a step, consumed by the renderer and the UI. Events are
@@ -77,6 +79,7 @@ export type SimEvent =
       links: string[];
       activeFrom: number;
     }
+  | { k: "defense.removed"; tick: number; id: string }
   | { k: "signal.aspect"; tick: number; signal: string; aspect: Aspect }
   | { k: "interlocking.health"; tick: number; il: string; health: "ok" | "down" }
   | { k: "train.spawned"; tick: number; train: string; service: string }
