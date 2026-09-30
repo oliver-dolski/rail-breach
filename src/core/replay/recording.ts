@@ -34,9 +34,18 @@ export interface Recording {
   checkpoints: Checkpoint[];
 }
 
+/** Upper bounds on a recording's arrays. A committed recording is far below them. */
+export const MAX_RECORDED_ACTIONS = 100_000;
+export const MAX_RECORDED_CHECKPOINTS = 100_000;
+
+const HASH_FORMAT = /^[0-9a-f]{8}$/;
+
 const isUint = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
 
-/** Validates a parsed recording before the engine sees it. Throws on the first problem. */
+/**
+ * Validates a parsed recording before the engine sees it. Throws on the first
+ * problem: a corrupted or hostile file is rejected, not half-ignored.
+ */
 export function assertRecording(value: unknown): asserts value is Recording {
   if (typeof value !== "object" || value === null) throw new Error("recording: not an object");
   const r = value as Record<string, unknown>;
@@ -46,18 +55,35 @@ export function assertRecording(value: unknown): asserts value is Recording {
   if (!isUint(r.seed)) throw new Error("recording: seed must be a non-negative integer");
   if (!isUint(r.durationTicks)) throw new Error("recording: durationTicks must be an integer");
   if (!Array.isArray(r.actions)) throw new Error("recording: actions must be an array");
+  if (r.actions.length > MAX_RECORDED_ACTIONS) {
+    throw new Error(`recording: more than ${MAX_RECORDED_ACTIONS} actions`);
+  }
   for (const item of r.actions as unknown[]) {
     const x = item as { t?: unknown; a?: unknown } | null;
     if (typeof x !== "object" || x === null || !isUint(x.t) || x.t < 1) {
       throw new Error("recording: action tick must be an integer >= 1");
     }
+    if (x.t > r.durationTicks) {
+      throw new Error("recording: action is after the end of the recording and would never run");
+    }
     if (!isAction(x.a)) throw new Error("recording: unknown or malformed action");
   }
   if (!Array.isArray(r.checkpoints)) throw new Error("recording: checkpoints must be an array");
+  if (r.checkpoints.length > MAX_RECORDED_CHECKPOINTS) {
+    throw new Error(`recording: more than ${MAX_RECORDED_CHECKPOINTS} checkpoints`);
+  }
+  let lastCheckpoint = 0;
   for (const item of r.checkpoints as unknown[]) {
     const x = item as { t?: unknown; h?: unknown } | null;
     if (typeof x !== "object" || x === null || !isUint(x.t) || typeof x.h !== "string") {
       throw new Error("recording: malformed checkpoint");
     }
+    if (!HASH_FORMAT.test(x.h)) {
+      throw new Error("recording: checkpoint hash must be 8 lowercase hex digits");
+    }
+    if (x.t <= lastCheckpoint) {
+      throw new Error("recording: checkpoint ticks must be unique and increasing");
+    }
+    lastCheckpoint = x.t;
   }
 }

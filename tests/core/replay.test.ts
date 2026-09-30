@@ -3,7 +3,12 @@ import { techniques } from "../../src/content/techniques";
 import type { Content } from "../../src/content/types";
 import { ContentError, validateContent } from "../../src/content/validate";
 import { stateHash } from "../../src/core/hash";
-import { assertRecording, RECORDING_SCHEMA, type Recording } from "../../src/core/replay/recording";
+import {
+  assertRecording,
+  MAX_RECORDED_ACTIONS,
+  RECORDING_SCHEMA,
+  type Recording,
+} from "../../src/core/replay/recording";
 import { createRunner, ReplayMismatchError } from "../../src/core/replay/runner";
 import { RecordedSource } from "../../src/core/replay/source";
 import type { Action } from "../../src/core/sim/actions";
@@ -105,10 +110,10 @@ describe("recording and replay", () => {
   });
 
   it("survives a JSON round-trip of the recording", () => {
-    const recording = record(busyActions, 300);
+    const recording = record(busyActions, 500);
     const revived = JSON.parse(JSON.stringify(recording)) as unknown;
     assertRecording(revived);
-    expect(() => replay(revived, [300])).not.toThrow();
+    expect(() => replay(revived, [500])).not.toThrow();
   });
 
   it("RecordedSource returns due actions in recorded order and nothing elsewhere", () => {
@@ -131,6 +136,33 @@ describe("recording and replay", () => {
     ).toThrow();
     expect(() => assertRecording({ ...good, checkpoints: [{ t: 100, h: 12 }] })).toThrow();
     expect(() => assertRecording(null)).toThrow();
+  });
+
+  it("assertRecording rejects a recording the engine would half-ignore", () => {
+    const good = record([], 300);
+    const cp = (t: number, h = "0123abcd") => ({ t, h });
+    const action = { type: "noop" as const };
+    expect(() => assertRecording({ ...good, checkpoints: [cp(100), cp(200)] })).not.toThrow();
+    // duplicate or decreasing checkpoint ticks: a Map would silently keep the last
+    expect(() => assertRecording({ ...good, checkpoints: [cp(100), cp(100)] })).toThrow(
+      /increasing/,
+    );
+    expect(() => assertRecording({ ...good, checkpoints: [cp(200), cp(100)] })).toThrow(
+      /increasing/,
+    );
+    // hash format
+    expect(() => assertRecording({ ...good, checkpoints: [cp(100, "xyz")] })).toThrow(/hex/);
+    expect(() => assertRecording({ ...good, checkpoints: [cp(100, "0123ABCD")] })).toThrow(/hex/);
+    // an action after the end would never be applied
+    expect(() =>
+      assertRecording({ ...good, actions: [{ t: good.durationTicks + 1, a: action }] }),
+    ).toThrow(/never run/);
+    expect(() =>
+      assertRecording({ ...good, actions: [{ t: good.durationTicks, a: action }] }),
+    ).not.toThrow();
+    // sizes
+    const many = Array.from({ length: MAX_RECORDED_ACTIONS + 1 }, () => ({ t: 1, a: action }));
+    expect(() => assertRecording({ ...good, actions: many })).toThrow(/more than/);
   });
 });
 
