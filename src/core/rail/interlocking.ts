@@ -126,6 +126,7 @@ function applyRequest(
   req: RouteRequest,
   occ: Uint8Array,
   events: SimEvent[],
+  controlDenied: boolean,
 ): string | undefined {
   const { graph, routes } = index.rail;
   const tick = world.tick;
@@ -133,6 +134,9 @@ function applyRequest(
   if (!route) return "unknown route";
   if (il.health === "down") return "interlocking is out of service";
   if (il.cmdBlocked) return "command channel is blocked";
+  // Denial of control: the operators cannot steer. Only a refusal, so nothing is set or
+  // cleared by it; the dispatch layer's own requests and every route already held go on.
+  if (controlDenied && req.by === "operator") return "control denied";
 
   if (req.kind === "cancel") {
     const lock = il.locks.find((l) => l.route === req.route);
@@ -222,7 +226,15 @@ export function stepInterlocking(
     const pending = [...il.queue].sort(compareRequests);
     il.queue = [];
     for (const req of pending) {
-      const reason = applyRequest(world, index, il, req, occ, events);
+      const reason = applyRequest(
+        world,
+        index,
+        il,
+        req,
+        occ,
+        events,
+        inputs.controlDenied[il.id] ?? false,
+      );
       if (reason !== undefined) {
         events.push({
           k: "command.rejected",

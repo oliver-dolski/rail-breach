@@ -7,11 +7,17 @@ import type { NodeState, World } from "../sim/world";
  * the railway more restrictive: an interlocking can go down, a command channel
  * can close, a section can be reported disturbed, a lamp can go out. Nothing
  * here can grant a proceed aspect, clear a lock or move a train, and there is
- * deliberately no field that could be extended to do so.
+ * deliberately no field that could be extended to do so. The denial of control is the same
+ * kind of field: it makes an interlocking refuse an operator's request, never grant one.
  */
 export interface RailInputs {
   interlockingHealth: Record<string, "ok" | "down">;
   cmdBlocked: Record<string, boolean>;
+  /**
+   * Interlockings whose operator requests are refused ("control denied"). Requests from the
+   * dispatch layer are not affected, and nothing already set or cleared is touched.
+   */
+  controlDenied: Record<string, boolean>;
   /** Sections the interlocking must treat as occupied. Sorted, unique. */
   disturbedSections: string[];
   /** Signals forced dark. Sorted, unique. */
@@ -28,13 +34,16 @@ export interface RailInputs {
 export function neutralInputs(world: World): RailInputs {
   const interlockingHealth: Record<string, "ok" | "down"> = {};
   const cmdBlocked: Record<string, boolean> = {};
+  const controlDenied: Record<string, boolean> = {};
   for (const il of world.interlockings) {
     interlockingHealth[il.id] = "ok";
     cmdBlocked[il.id] = false;
+    controlDenied[il.id] = false;
   }
   return {
     interlockingHealth,
     cmdBlocked,
+    controlDenied,
     disturbedSections: [],
     darkSignals: [],
     paramClamps: {},
@@ -76,6 +85,8 @@ function clampSections(inputs: RailInputs, index: Index, node: NodeState): void 
  *  - an interlocking node that is down takes its interlocking out of service
  *  - a closed command channel (on the front-end processor or the traffic
  *    management server: every interlocking; on an interlocking: that one)
+ *  - a denial of control, on the same nodes and with the same reach as a closed command
+ *    channel, makes those interlockings refuse operator requests
  *  - an object controller that is degraded or shows spoofed data leaves its
  *    axle-counter sections disturbed, which the interlocking treats as occupied
  *  - an object controller that is down also darkens the signals it drives
@@ -97,6 +108,13 @@ export function deriveRailInputs(world: World, index: Index): RailInputs {
         for (const id of Object.keys(inputs.cmdBlocked)) inputs.cmdBlocked[id] = true;
       } else if (node.controls !== "" && inputs.cmdBlocked[node.controls] !== undefined) {
         inputs.cmdBlocked[node.controls] = true;
+      }
+    }
+    if (node.controlDenied) {
+      if (isCentralChannel) {
+        for (const id of Object.keys(inputs.controlDenied)) inputs.controlDenied[id] = true;
+      } else if (node.controls !== "" && inputs.controlDenied[node.controls] !== undefined) {
+        inputs.controlDenied[node.controls] = true;
       }
     }
     if (node.kind === "interlocking" && node.controls !== "" && node.availability === "down") {
