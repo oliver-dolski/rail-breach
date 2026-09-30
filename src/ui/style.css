@@ -498,6 +498,25 @@ button.plain:disabled {
   cursor: default;
 }
 
+.chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.chips:empty {
+  display: none;
+}
+
+.chips .tone-chip {
+  padding: 3px 6px;
+  border-left: 2px solid var(--attacker);
+  background: #0d131b;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
 .legend {
   margin: 0;
   padding: 0;

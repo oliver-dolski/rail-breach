@@ -102,6 +102,29 @@
         </section>
 
         <section class="block">
+          <h2>Type what to try</h2>
+          <p class="muted">
+            For example: phishing to the dispatcher. The text is read here in the browser by
+            keywords, and nothing runs until you press Run.
+          </p>
+          <div class="field-row">
+            <input
+              id="freetext-input"
+              class="field"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="vendor VPN, scan the network, spoof the reports"
+              aria-label="Free text: what to try"
+            />
+            <button type="button" id="freetext-map" class="plain">Interpret</button>
+          </div>
+          <div id="freetext-chips" class="chips" aria-live="polite"></div>
+          <p id="freetext-note" class="muted" aria-live="polite"></p>
+          <button type="button" id="freetext-run" class="plain" disabled>Run</button>
+        </section>
+
+        <section class="block">
           <h2>Defenses</h2>
           <p class="muted">
             Pick a defense, then click a conduit (a thick line between zones) on the map, or use
