@@ -496,3 +496,17 @@ describe("removing a defense", () => {
     expect(isAction({ type: "defense.remove", id: "d1", extra: true })).toBe(false);
   });
 });
+
+describe("local restoration and defenses are separate mechanisms", () => {
+  it("restoring a node leaves every placed defense where it is", () => {
+    const actions: TimedAction[] = [
+      place(1, firewallOn(DMZ_TO_CONTROL)),
+      { t: 30, a: { type: "restore", node: "dispatch-hmi-1" } },
+      { t: 31, a: { type: "restore", node: "tms-server" } },
+    ];
+    const { world } = run(createWorld(network, 1), index, actions, 40);
+    const members = network.links.filter((l) => l.conduit === DMZ_TO_CONTROL).length;
+    expect(world.defenses).toHaveLength(members);
+    expect(world.defenseSeq).toBe(1);
+  });
+});
