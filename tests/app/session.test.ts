@@ -120,4 +120,18 @@ describe("live commands", () => {
     expect(queue.due(stamped.t)).toEqual([action]);
     expect(queue.due(stamped.t + 1)).toEqual([]);
   });
+
+  it("are checked like a recorded action: a malformed one is refused with a reason and forks nothing", () => {
+    const session = createAttractSession();
+    session.advance(5);
+    const sneaky = { type: "route.cancel", route: "R-HAR-dn", extra: 1 } as never;
+    expect(session.dispatch(sneaky)).toMatch(/not well formed/);
+    expect(session.dispatch({ type: "nonsense" } as never)).toMatch(/not well formed/);
+    expect(session.live()).toBe(false);
+    expect(session.liveActions()).toEqual([]);
+
+    expect(session.dispatch({ type: "route.cancel", route: "R-HAR-dn" })).toBeUndefined();
+    expect(session.live()).toBe(true);
+    expect(session.liveActions()).toHaveLength(1);
+  });
 });

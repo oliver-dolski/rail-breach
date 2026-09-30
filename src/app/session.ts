@@ -8,7 +8,7 @@ import { InvariantViolation } from "../core/rail/invariants";
 import { assertRecording, type Recording, type TimedAction } from "../core/replay/recording";
 import { createRunner, ReplayMismatchError, type Runner } from "../core/replay/runner";
 import { type ActionSource, RecordedSource } from "../core/replay/source";
-import type { Action } from "../core/sim/actions";
+import { type Action, isAction } from "../core/sim/actions";
 import type { SimEvent } from "../core/sim/events";
 import { buildIndex, type Index } from "../core/sim/model";
 import { createWorld, type World } from "../core/sim/world";
@@ -46,8 +46,10 @@ export interface AttractSession {
    * one forks the show from the current world: the rest of the recording still plays,
    * with the action added, but the run is no longer the recorded one and its hash
    * checkpoints are no longer checked. The safety invariant still is, every tick.
+   * Returns why the action was not taken (not a well-formed action, or the session has
+   * stopped), or undefined when it was queued; the caller shows that to the viewer.
    */
-  dispatch(action: Action): void;
+  dispatch(action: Action): string | undefined;
   /** True once a live action has forked the show; false again after a restart. */
   live(): boolean;
   /**
@@ -169,7 +171,10 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
       return out;
     },
     dispatch(action) {
-      if (failure !== undefined || !held) return;
+      // The same exact-key guard a recording passes: nothing unchecked reaches the engine.
+      if (!isAction(action)) return "That action is not well formed, so it was not applied.";
+      if (failure !== undefined || !held)
+        return "The session has stopped, so nothing more can be applied.";
       if (!forked) {
         // The recorded actions still due keep coming; nothing is verified against them any more.
         const merged: ActionSource = {
@@ -179,6 +184,7 @@ export function createAttractSession(options: SessionOptions = {}): AttractSessi
         forked = true;
       }
       queue.enqueue(stampAction(runner.view(), action));
+      return undefined;
     },
     startWorld: () => snapshot,
     liveActions: () => queue.all(),

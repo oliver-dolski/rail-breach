@@ -2,6 +2,7 @@ import "../ui/style.css";
 import { layout } from "../content/layout";
 import { network } from "../content/network";
 import { techniques } from "../content/techniques";
+import type { Action } from "../core/sim/actions";
 import type { World } from "../core/sim/world";
 import { buildMapperContext } from "../mapper/context";
 import { keywordMapper } from "../mapper/keyword";
@@ -87,19 +88,22 @@ function boot(): void {
   const panel = createPanel(document);
   let viewContext = createViewContext(network, session.index, layout);
   const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks);
+  const sessionNote = byId("session-note");
+  /** Hands an action to the session and says so on the page when it was refused. */
+  const submit = (action: Action): void => setText(sessionNote, session.dispatch(action) ?? "");
   const defenses = createDefensePalette(document, {
     content: network,
-    onAction: (action) => session.dispatch(action),
+    onAction: submit,
     onReset: () => session.reset(),
   });
   const mapperContext = buildMapperContext(network, techniques);
-  createPicker(document, { ctx: mapperContext, onAction: (action) => session.dispatch(action) });
+  createPicker(document, { ctx: mapperContext, onAction: submit });
   // With no key the LLM mapper hands straight over to the keywords, and it does so on any failure too.
   const keyPanel = createKeyPanel(document, keystore);
   createFreeText(document, {
     ctx: mapperContext,
     mapper: createLlmMapper({ keystore, fallback: keywordMapper, model: keyPanel.model }),
-    onAction: (action) => session.dispatch(action),
+    onAction: submit,
   });
   const timeline = new Timeline(names);
   const timelineView = createTimelineView(document);
