@@ -9,13 +9,18 @@ import { ParticleRing, packetParticles } from "../render/particleRing";
 import { MapRenderer } from "../render/renderer";
 import { buildView, createViewContext } from "../render/view";
 import { setText } from "../ui/dom";
-import { RENDER_FAILED_MESSAGE, reportBootFailure, showFallback } from "../ui/fallback";
+import {
+  CONTEXT_LOST_MESSAGE,
+  RENDER_FAILED_MESSAGE,
+  reportBootFailure,
+  showFallback,
+} from "../ui/fallback";
 import { createLabels } from "../ui/labels";
 import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
 import { createRefreshGate } from "../ui/panel/refresh";
 import { type LoopHandle, startLoop } from "./loop";
-import { attempt } from "./recovery";
+import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
 import { createAttractSession } from "./session";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -68,6 +73,14 @@ function boot(): void {
   };
 
   let renderer: MapRenderer | undefined;
+  let loop: LoopHandle | undefined;
+
+  /** The map is gone for good: show the still and keep the panel and the simulation running. */
+  const dropRenderer = (message: string, reason: string): void => {
+    renderer = undefined;
+    showFallback(fallbackEls, reason, message);
+    loop?.resume();
+  };
 
   const detection = detectWebgl2(canvas);
   if (detection.ok && detection.gl) {
@@ -94,18 +107,32 @@ function boot(): void {
     resize();
   }
 
-  let loop: LoopHandle | undefined;
   if (renderer) {
     // The loop stops drawing while the context is gone and does not advance the
-    // simulation then; when it is restored every GL resource is built again and
-    // the particles start from empty, which changes nothing in the simulation.
+    // simulation then. If the browser restores it, every GL resource is built
+    // again and the particles start from empty, which changes nothing in the
+    // simulation. If it does not, the still takes over after a short grace period.
+    const guard = createLossGuard(browserTimers, CONTEXT_RESTORE_GRACE_MS, () =>
+      dropRenderer(CONTEXT_LOST_MESSAGE, "the context was not restored"),
+    );
     watchContext(canvas, {
       onLost() {
         loop?.pause();
         renderer?.release();
+        guard.lost();
       },
       onRestored() {
-        renderer?.rebuild();
+        guard.restored();
+        if (!renderer) return;
+        try {
+          renderer.rebuild();
+        } catch (error) {
+          dropRenderer(
+            CONTEXT_LOST_MESSAGE,
+            error instanceof Error ? error.message : "unknown error",
+          );
+          return;
+        }
         ring.clear();
         resize();
         loop?.resume();

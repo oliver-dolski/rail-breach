@@ -14,6 +14,9 @@ export const FALLBACK_MESSAGE =
 export const RENDER_FAILED_MESSAGE =
   "The live map could not start. Below is a still of the dispatcher map; the panel on the right keeps running the same recorded session.";
 
+export const CONTEXT_LOST_MESSAGE =
+  "The graphics context was lost and did not come back. Below is a still of the dispatcher map; the panel on the right keeps running the same recorded session.";
+
 export const BOOT_FAILED_MESSAGE =
   "The page could not start. Below is a still of the dispatcher map.";
 
