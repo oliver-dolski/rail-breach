@@ -28,6 +28,11 @@ export interface NodeState {
   view: ViewState;
   cmdBlocked: boolean;
   controlDenied: boolean;
+  /**
+   * Tick at which a temporary denial of control lifts by itself, or 0 when the denial
+   * has no end (or there is none). Only ever pushed later by an attack.
+   */
+  controlRecoverAt: number;
   discovered: boolean;
   /**
    * Cap on the line speed the node's sections allow, in permille of normal. Starts
@@ -132,6 +137,7 @@ export function createWorld(content: Content, seed: number): World {
     view: "ok",
     cmdBlocked: false,
     controlDenied: false,
+    controlRecoverAt: 0,
     discovered: false,
     paramClampPermille: PERMILLE,
   }));

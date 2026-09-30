@@ -47,3 +47,12 @@ export const CTC_RETRY_TICKS = 50;
 export const TERMINUS_DWELL_TICKS = 600;
 /** How long a train that ran past a signal at danger waits before it may move again. */
 export const OVERRUN_RECOVERY_TICKS = 600;
+
+/**
+ * How long a Denial of Control (T0813) lasts before the operators get the channel
+ * back: 2 minutes at 10 ticks per second. It is the temporary sibling of Loss of
+ * Control, and the engine lifts it by tick number, so the moment does not depend on
+ * the frame rate. The exact period is a judgement call about what reads as a
+ * temporary outage rather than an instant blip or a permanent loss.
+ */
+export const DENIAL_OF_CONTROL_RECOVER_TICKS = 1200;

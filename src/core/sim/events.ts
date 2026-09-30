@@ -40,6 +40,8 @@ export type SimEvent =
       node: string;
       effect: EffectKind;
     }
+  /** A cyber effect on `node` ended: it timed out or a local restoration removed it. */
+  | { k: "effect.cleared"; tick: number; node: string; effect: EffectKind }
   | {
       k: "command.rejected";
       tick: number;

@@ -115,6 +115,7 @@ const CYBER_FIELDS = [
   "discovered",
   "cmdBlocked",
   "controlDenied",
+  "controlRecoverAt",
   "view",
   "availability",
   "paramClampPermille",
@@ -153,6 +154,14 @@ function expectOnlyMonotoneCyberChanges(before: World, after: World): void {
     for (const flag of ["discovered", "cmdBlocked", "controlDenied"] as const) {
       // A flag may turn on; it never turns off.
       if (old[flag]) expect(node[flag], `${node.id}.${flag}`).toBe(true);
+    }
+    // A denial's end only ever moves later: 0 (never) is the latest there is.
+    if (old.controlDenied && old.controlRecoverAt === 0) {
+      expect(node.controlRecoverAt, `${node.id}.controlRecoverAt`).toBe(0);
+    } else if (old.controlDenied && node.controlRecoverAt !== 0) {
+      expect(node.controlRecoverAt, `${node.id}.controlRecoverAt`).toBeGreaterThanOrEqual(
+        old.controlRecoverAt,
+      );
     }
   });
 }
@@ -254,13 +263,28 @@ describe("the new effects only ever move a field one way", () => {
     expect(seen).toEqual(["down", "down", "down", "down"]);
   });
 
-  it("a denial of control never turns itself off inside applyEffect", () => {
+  it("a denial of control never turns itself off inside applyEffect, and only ever lasts longer", () => {
     const world = fresh();
-    applyEffect(world, index, "dispatch-hmi-1", { k: "denyControl", recoverTicks: 1 });
-    expect(node(world, "dispatch-hmi-1").controlDenied).toBe(true);
-    // The lifetime is the lifecycle's business (plan 02-02); the write itself is one-way.
-    expect(applyEffect(world, index, "dispatch-hmi-1", { k: "denyControl" })).toBe(false);
-    expect(node(world, "dispatch-hmi-1").controlDenied).toBe(true);
+    const hmi = () => node(world, "dispatch-hmi-1");
+    const deny = (recoverTicks?: number) =>
+      applyEffect(world, index, "dispatch-hmi-1", {
+        k: "denyControl",
+        ...(recoverTicks === undefined ? {} : { recoverTicks }),
+      });
+    expect(deny(100)).toBe(true);
+    expect(hmi().controlRecoverAt).toBe(100);
+    // The lifetime is the lifecycle's business; a write never shortens it.
+    expect(deny(40)).toBe(false);
+    expect(hmi().controlRecoverAt).toBe(100);
+    expect(deny(300)).toBe(true);
+    expect(hmi().controlRecoverAt).toBe(300);
+    // A denial with no end of its own outlasts any timer, and nothing shortens it again.
+    expect(deny()).toBe(true);
+    expect(hmi().controlRecoverAt).toBe(0);
+    expect(deny(50)).toBe(false);
+    expect(deny()).toBe(false);
+    expect(hmi().controlDenied).toBe(true);
+    expect(hmi().controlRecoverAt).toBe(0);
   });
 });
 
@@ -274,9 +298,10 @@ describe("the effect code cannot reach the railway", () => {
   const assigned = (source: string): Set<string> =>
     new Set([...source.matchAll(/\b\w+\.(\w+)\s*(?:=|\+=|-=)(?!=)/g)].map((m) => m[1] ?? ""));
 
-  it("applyEffect reads only world.nodes and writes only the cyber fields", () => {
+  it("applyEffect reads only world.nodes and the clock and writes only the cyber fields", () => {
     const source = code("src/core/attack/effects.ts");
-    expect([...worldFields(source)].sort()).toEqual(["nodes"]);
+    // The clock is read only to date the end of a temporary denial.
+    expect([...worldFields(source)].sort()).toEqual(["nodes", "tick"]);
     expect([...assigned(source)].sort()).toEqual([...CYBER_FIELDS].sort());
   });
 

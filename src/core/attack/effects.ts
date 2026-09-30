@@ -1,3 +1,4 @@
+import type { SimEvent } from "../sim/events";
 import type { Index } from "../sim/model";
 import type { Availability, NodeState, ViewState, World } from "../sim/world";
 import type { Effect } from "./types";
@@ -5,9 +6,12 @@ import type { Effect } from "./types";
 /**
  * The only place an attack touches the world, and it touches nothing but the
  * cyber fields of a NodeState (integrity, discovered, cmdBlocked, controlDenied,
- * view, availability, paramClampPermille). Every write is monotone: a foothold
- * never shrinks, a flag only turns on, a view or an availability only gets worse
- * and a parameter cap only goes down. The railway learns of these fields solely through
+ * controlRecoverAt, view, availability, paramClampPermille). Every write is
+ * monotone: a foothold never shrinks, a flag only turns on (and a temporary denial
+ * only ever lasts longer), a view or an availability only gets worse and a
+ * parameter cap only goes down. The way back is the lifecycle below, not the
+ * attacker: a timer that lifts a temporary denial, and the local restoration.
+ * The railway learns of these fields solely through
  * deriveRailInputs, which can only restrict, so there is no path from here to a
  * lock, an aspect, a point or a train. Keep it that way: adding a member to
  * Effect that needs anything else is a design decision, not a code change.
@@ -32,8 +36,18 @@ export function applyEffect(world: World, index: Index, targetId: string, effect
       return true;
     }
     case "denyControl": {
-      if (!hasTag(index, target, effect.onTag) || target.controlDenied) return false;
-      target.controlDenied = true;
+      if (!hasTag(index, target, effect.onTag)) return false;
+      // 0 means the denial has no end of its own.
+      const until = effect.recoverTicks === undefined ? 0 : world.tick + effect.recoverTicks;
+      if (!target.controlDenied) {
+        target.controlDenied = true;
+        target.controlRecoverAt = until;
+        return true;
+      }
+      // Already denied: a second hit can only make it last longer, never shorter.
+      if (target.controlRecoverAt === 0) return false;
+      if (until !== 0 && until <= target.controlRecoverAt) return false;
+      target.controlRecoverAt = until;
       return true;
     }
     case "setView": {
@@ -53,6 +67,22 @@ export function applyEffect(world: World, index: Index, targetId: string, effect
     }
     default:
       return assertNever(effect);
+  }
+}
+
+/**
+ * The lifecycle of a temporary effect: lifts every denial of control whose time is
+ * up. Keyed by tick number, never by wall-clock time, so the same tick clears it
+ * however the ticks are batched. Only this timer and restoreNode can turn a cyber
+ * field back; nothing here touches the railway.
+ */
+export function expireEffects(world: World, tick: number, events: SimEvent[]): void {
+  for (const node of world.nodes) {
+    if (node.controlDenied && node.controlRecoverAt !== 0 && node.controlRecoverAt <= tick) {
+      node.controlDenied = false;
+      node.controlRecoverAt = 0;
+      events.push({ k: "effect.cleared", tick, node: node.id, effect: "denyControl" });
+    }
   }
 }
 

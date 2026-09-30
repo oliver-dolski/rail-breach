@@ -1,4 +1,5 @@
 import type { TechniqueDef } from "../../core/attack/types";
+import { DENIAL_OF_CONTROL_RECOVER_TICKS } from "../../core/sim/constants";
 
 /**
  * The technique rules, numbered as in ATT&CK for ICS v19.2 (checked 2026-09-30).
@@ -60,13 +61,6 @@ export const remoteServices: TechniqueDef = {
   explain:
     "A remote session over a permitted service moves the intruder on; on a system that owns a command channel the intruder holds the session and the operators lose that channel.",
 };
-
-/**
- * How long a denial of control lasts before the operators get the channel back,
- * in ticks (10 ticks are one simulated second). Denial of Control is the
- * temporary sibling of Loss of Control; the engine lifts it after this time.
- */
-export const DENIAL_OF_CONTROL_RECOVER_TICKS = 1200;
 
 export const externalRemoteServices: TechniqueDef = {
   id: "T0822",

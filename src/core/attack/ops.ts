@@ -5,7 +5,7 @@ import { PERMILLE, PURPOSE_OP_DURATION, PURPOSE_TECHNIQUE_SUCCESS } from "../sim
 import type { SimEvent } from "../sim/events";
 import type { Index } from "../sim/model";
 import type { World } from "../sim/world";
-import { applyEffect } from "./effects";
+import { applyEffect, expireEffects } from "./effects";
 import type { NodeSelector, Op, Precondition, TechniqueDef } from "./types";
 
 /**
@@ -225,11 +225,14 @@ function finish(world: World, index: Index, def: TechniqueDef, op: Op, events: S
  * that reaches the end of a link checks that the link still permits its
  * protocol before it goes on; one that finds the way shut ends there as an
  * op.blocked event. An operation that has reached its target rolls the outcome
- * once its work time is over.
+ * once its work time is over. Temporary effects whose time is up end before any
+ * operation moves.
  */
 export function stepOps(world: World, index: Index, events: SimEvent[]): void {
-  if (world.ops.length === 0) return;
   const tick = world.tick;
+  // Temporary effects end first, so a denial that lands this tick is not lifted by it.
+  expireEffects(world, tick, events);
+  if (world.ops.length === 0) return;
   const kept: Op[] = [];
   for (const op of world.ops) {
     const def = index.techniques.get(op.technique);
