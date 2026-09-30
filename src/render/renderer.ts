@@ -1,6 +1,7 @@
 import * as twgl from "twgl.js";
 import type { Layout } from "../content/layout";
 import type { Content } from "../content/types";
+import { TICKS_PER_SECOND } from "../core/sim/constants";
 import { fitMap, viewUniform } from "./geometry";
 import { type GlResources, initGL } from "./gl/context";
 import { runBloom, sizePost } from "./gl/post";
@@ -95,7 +96,7 @@ export class MapRenderer {
     const frame: Frame = {
       view: viewUniform(this.fit, this.width, this.height),
       pxPerUnit: this.fit.scale,
-      simTime: view.phase / 10,
+      simTime: view.phase / TICKS_PER_SECOND,
     };
 
     twgl.bindFramebufferInfo(gl, targets.scene);

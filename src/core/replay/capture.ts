@@ -1,3 +1,4 @@
+import { TICK_MS } from "../sim/constants";
 import type { Index } from "../sim/model";
 import type { World } from "../sim/world";
 import { RECORDING_FORMAT, RECORDING_SCHEMA, type Recording, type TimedAction } from "./recording";
@@ -19,7 +20,7 @@ export function captureRecording(
     format: RECORDING_FORMAT,
     schema: RECORDING_SCHEMA,
     seed: initial.seed,
-    tickMs: 100,
+    tickMs: TICK_MS,
     durationTicks,
     actions: actions.map(({ t, a }) => ({ t, a })),
     checkpoints: [],

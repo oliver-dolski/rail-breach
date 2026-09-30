@@ -1,5 +1,6 @@
 import type { Layout } from "../content/layout";
 import type { Content } from "../content/types";
+import { TICKS_PER_SECOND } from "../core/sim/constants";
 import type { SimEvent } from "../core/sim/events";
 import { ALERT_COLORS, NEUTRAL, type Rgba } from "./palette";
 
@@ -43,7 +44,7 @@ export function packetParticles(event: PacketEvent, layout: Layout): Particle[] 
   const from = layout.nodes[event.from];
   const to = layout.nodes[event.to];
   if (!from || !to) return [];
-  const duration = Math.max((event.arriveTick - event.tick) / 10, MIN_TRAVEL_SECONDS);
+  const duration = Math.max((event.arriveTick - event.tick) / TICKS_PER_SECOND, MIN_TRAVEL_SECONDS);
   const [r, g, b] = ALERT_COLORS.attacker;
   const out: Particle[] = [];
   for (let i = 0; i < TRAIL_PARTICLES; i++) {
@@ -53,7 +54,7 @@ export function packetParticles(event: PacketEvent, layout: Layout): Particle[] 
       y0: from.y,
       x1: to.x,
       y1: to.y,
-      start: event.tick / 10 + i * TRAIL_GAP_SECONDS,
+      start: event.tick / TICKS_PER_SECOND + i * TRAIL_GAP_SECONDS,
       duration,
       size: 5.6 - 3.2 * k,
       loop: false,

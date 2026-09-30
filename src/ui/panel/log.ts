@@ -1,5 +1,6 @@
 import type { Layout } from "../../content/layout";
 import type { TechniqueDef } from "../../core/attack/types";
+import { TICKS_PER_SECOND } from "../../core/sim/constants";
 import type { SimEvent } from "../../core/sim/events";
 
 export type Tone = "attack" | "effect" | "rail" | "refusal";
@@ -51,7 +52,7 @@ export function isNewsworthyRefusal(event: Extract<SimEvent, { k: "command.rejec
 }
 
 export function formatClock(ticks: number): string {
-  const total = Math.max(0, Math.floor(ticks / 10));
+  const total = Math.max(0, Math.floor(ticks / TICKS_PER_SECOND));
   const mm = String(Math.floor(total / 60)).padStart(2, "0");
   const ss = String(total % 60).padStart(2, "0");
   return `${mm}:${ss}`;

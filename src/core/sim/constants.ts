@@ -1,6 +1,9 @@
 /** Fixed simulation tick: 10 Hz. Wall-clock time exists only in the app shell. */
 export const TICK_MS = 100;
 
+/** Ticks in one second of simulated time. */
+export const TICKS_PER_SECOND = 1000 / TICK_MS;
+
 /** Positions are integer decimetres, speeds integer decimetres per tick. */
 export const DM_PER_M = 10;
 
