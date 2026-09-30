@@ -1,9 +1,22 @@
 import type { EffectKind } from "../attack/types";
+import type { DefenseKind } from "../net/defenses";
 
 /** What a signal shows. Dark means the lamp is out, which drivers treat as stop. */
 export type Aspect = "proceed" | "caution" | "stop" | "dark";
 
 export type StopCause = "signal" | "station" | "terminus" | "overrun";
+
+/** Why an action was refused; the world is left as it was. */
+export type RejectReason =
+  | "unknown-node"
+  | "no-index"
+  /** A defense named a conduit or link that does not exist, or a conduit without links. */
+  | "unknown-target"
+  /** A defense config that does not belong to its kind. */
+  | "invalid-defense"
+  /** A defense that would change nothing because the same one is already there. */
+  | "already-placed"
+  | "defense-limit";
 
 /**
  * Derived output of a step, consumed by the renderer and the UI. Events are
@@ -14,7 +27,7 @@ export type SimEvent =
   | { k: "technique.succeeded"; tick: number; op: number; technique: string; node: string }
   /** The operation finished on `node` and the roll went against the attacker. */
   | { k: "technique.failed"; tick: number; op: number; technique: string; node: string }
-  | { k: "action.rejected"; tick: number; reason: "unknown-node" | "no-index" }
+  | { k: "action.rejected"; tick: number; reason: RejectReason }
   /** A launch that did not meet its preconditions, with each failed one in words. */
   | { k: "technique.rejected"; tick: number; technique: string; target: string; reasons: string[] }
   | { k: "op.started"; tick: number; op: number; technique: string; target: string; from: string }
@@ -54,6 +67,16 @@ export type SimEvent =
     }
   | { k: "route.set"; tick: number; il: string; route: string; by: string }
   | { k: "route.released"; tick: number; il: string; route: string; cause: "cleared" | "cancelled" }
+  /** A defense was placed; it is in force from `activeFrom`. `conduit` is "" for a single link. */
+  | {
+      k: "defense.placed";
+      tick: number;
+      id: string;
+      kind: DefenseKind;
+      conduit: string;
+      links: string[];
+      activeFrom: number;
+    }
   | { k: "signal.aspect"; tick: number; signal: string; aspect: Aspect }
   | { k: "interlocking.health"; tick: number; il: string; health: "ok" | "down" }
   | { k: "train.spawned"; tick: number; train: string; service: string }

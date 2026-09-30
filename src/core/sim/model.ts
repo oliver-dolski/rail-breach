@@ -1,4 +1,4 @@
-import type { Content, NodeDef } from "../../content/types";
+import type { ConduitDef, Content, NodeDef } from "../../content/types";
 import type { TechniqueDef } from "../attack/types";
 import { buildNetIndex, type NetIndex } from "../net/graph";
 import { buildRailIndex, type RailIndex } from "../rail/routes";
@@ -13,6 +13,8 @@ export interface Index {
   net: NetIndex;
   /** Static node definitions by id (tags, hardening, awareness). */
   nodeDefs: Map<string, NodeDef>;
+  /** Static conduit definitions by id (the zones a conduit joins). */
+  conduits: Map<string, ConduitDef>;
   /** Technique catalogue by current ID and by legacy ID. */
   techniques: Map<string, TechniqueDef>;
   /** Run assertInvariants after every step. On in tests and dev builds. */
@@ -35,6 +37,7 @@ export function buildIndex(content: Content, options: IndexOptions = {}): Index 
     rail: buildRailIndex(content.tracks),
     net: buildNetIndex(content),
     nodeDefs: new Map(content.nodes.map((n) => [n.id, n])),
+    conduits: new Map(content.conduits.map((c) => [c.id, c])),
     techniques,
     checkInvariants: options.checkInvariants ?? false,
   };

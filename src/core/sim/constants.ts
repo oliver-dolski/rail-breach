@@ -16,6 +16,7 @@ export const CHECKPOINT_INTERVAL_TICKS = 100;
 /** Dice purposes: separate substreams, so unrelated rolls never share draws. */
 export const PURPOSE_TECHNIQUE_SUCCESS = 1;
 export const PURPOSE_OP_DURATION = 2;
+export const PURPOSE_DETECT = 3;
 
 /** Rolling stock: one fixed train length keeps occupancy arithmetic trivial. */
 export const TRAIN_LENGTH_DM = 1000;
@@ -56,3 +57,11 @@ export const OVERRUN_RECOVERY_TICKS = 600;
  * temporary outage rather than an instant blip or a permanent loss.
  */
 export const DENIAL_OF_CONTROL_RECOVER_TICKS = 1200;
+
+/**
+ * Time between asking for a defense and its coming into force: 2 seconds. Firewall
+ * rules and diodes are not instant, and a defense that acted on the very tick of the
+ * click would make a payload already on the wire impossible to beat. A judgement
+ * call about what reads as a fast but not free response.
+ */
+export const DEFENSE_PLACEMENT_LATENCY_TICKS = 20;

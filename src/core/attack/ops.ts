@@ -1,4 +1,5 @@
 import type { LinkDef, NodeDef, Protocol } from "../../content/types";
+import { linkAllows } from "../net/defenses";
 import { findPath, type NetPath } from "../net/graph";
 import { chance, roll32 } from "../rng";
 import { PERMILLE, PURPOSE_OP_DURATION, PURPOSE_TECHNIQUE_SUCCESS } from "../sim/constants";
@@ -9,13 +10,20 @@ import { applyEffect, expireEffects } from "./effects";
 import type { NodeSelector, Op, Precondition, TechniqueDef } from "./types";
 
 /**
- * Whether traffic of `protocol` may cross `link` right now. Every reachability
- * decision goes through here, both when a path is planned and again at every
- * hop, so a defense added later only has to change this one function. Null
- * means the technique does not travel.
+ * Whether traffic of `protocol` may cross `link` from `from` to `to` right now. Every
+ * reachability decision goes through here, both when a path is planned and again at
+ * every hop: the link must carry the protocol and every defense in force on it must
+ * agree (see linkAllows). Null means the technique does not travel.
  */
-export function linkPermits(link: LinkDef, protocol: Protocol | null): boolean {
-  return protocol === null || link.protocols.includes(protocol);
+export function linkPermits(
+  link: LinkDef,
+  protocol: Protocol | null,
+  from: string,
+  to: string,
+  world: World,
+  tick: number,
+): boolean {
+  return linkAllows(link, protocol, from, to, world, tick);
 }
 
 function matches(selector: NodeSelector, def: NodeDef): boolean {
@@ -31,6 +39,7 @@ function matches(selector: NodeSelector, def: NodeDef): boolean {
 
 /** The shortest permitted path from any of `starts` (in id order) to `target`. */
 function bestPath(
+  world: World,
   index: Index,
   starts: readonly string[],
   target: string,
@@ -38,7 +47,9 @@ function bestPath(
 ): NetPath | null {
   let best: NetPath | null = null;
   for (const start of starts) {
-    const path = findPath(index.net, start, target, (link) => linkPermits(link, protocol));
+    const path = findPath(index.net, start, target, (link, from, to) =>
+      linkPermits(link, protocol, from, to, world, world.tick),
+    );
     if (path !== null && (best === null || path.links.length < best.links.length)) best = path;
   }
   return best;
@@ -62,7 +73,7 @@ function evaluate(world: World, index: Index, def: TechniqueDef, target: string)
           .filter((n) => (pre.from === "external" ? n.kind === "external" : n.integrity >= 1))
           .map((n) => n.id);
         const origin = pre.from === "external" ? "the outside" : "a compromised node";
-        path = starts.length === 0 ? null : bestPath(index, starts, target, pre.protocol);
+        path = starts.length === 0 ? null : bestPath(world, index, starts, target, pre.protocol);
         if (path === null)
           reasons.push(`no permitted ${pre.protocol} path from ${origin} to ${target}`);
         break;
@@ -176,7 +187,7 @@ function depart(
   const from = op.path[op.hop];
   const to = op.path[op.hop + 1];
   if (link === undefined || from === undefined || to === undefined) return false;
-  if (!linkPermits(link, def.protocol)) {
+  if (!linkPermits(link, def.protocol, from, to, world, tick)) {
     events.push({ k: "op.blocked", tick, op: op.id, technique: def.id, link: link.id, at: from });
     return false;
   }
@@ -247,14 +258,16 @@ export function stepOps(world: World, index: Index, events: SimEvent[]): void {
     }
     // The payload has crossed links[hop]: it must still have been allowed to.
     const crossed = index.net.linkById.get(op.links[op.hop] ?? "");
-    if (crossed === undefined || !linkPermits(crossed, def.protocol)) {
+    const from = op.path[op.hop] ?? "";
+    const to = op.path[op.hop + 1] ?? "";
+    if (crossed === undefined || !linkPermits(crossed, def.protocol, from, to, world, tick)) {
       events.push({
         k: "op.blocked",
         tick,
         op: op.id,
         technique: def.id,
         link: crossed?.id ?? "",
-        at: op.path[op.hop] ?? "",
+        at: from,
       });
       continue;
     }

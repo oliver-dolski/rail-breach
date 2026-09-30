@@ -1,6 +1,16 @@
 import { restoreNode } from "../attack/effects";
 import { launchTechnique } from "../attack/ops";
+import {
+  type DefenseConfig,
+  type DefenseKind,
+  type DefenseTarget,
+  isDefenseConfig,
+  isDefenseKind,
+  isDefenseTarget,
+  placeDefense,
+} from "../net/defenses";
 import { enqueueRequest } from "../rail/interlocking";
+import { DEFENSE_PLACEMENT_LATENCY_TICKS } from "./constants";
 import type { SimEvent } from "./events";
 import type { Index } from "./model";
 import type { World } from "./world";
@@ -21,7 +31,12 @@ export type Action =
    * did to the node (view, availability, command channel, controls, speed cap) and
    * never the attacker's foothold. It has nothing to do with routes, signals or trains.
    */
-  | { type: "restore"; node: string };
+  | { type: "restore"; node: string }
+  /**
+   * Put a firewall, a data diode or an IDS sensor on a conduit or a link. The only way a
+   * user changes the network. It narrows traffic and raises detection, nothing more.
+   */
+  | { type: "defense.place"; kind: DefenseKind; on: DefenseTarget; config?: DefenseConfig };
 
 /** The keys each action type may carry, and no others. */
 const ACTION_KEYS = new Map<string, readonly string[]>([
@@ -30,6 +45,7 @@ const ACTION_KEYS = new Map<string, readonly string[]>([
   ["route.request", ["type", "route"]],
   ["route.cancel", ["type", "route"]],
   ["restore", ["type", "node"]],
+  ["defense.place", ["type", "kind", "on", "config"]],
 ]);
 
 /**
@@ -52,6 +68,12 @@ export function isAction(value: unknown): value is Action {
       return typeof v.route === "string";
     case "restore":
       return typeof v.node === "string";
+    case "defense.place":
+      return (
+        isDefenseKind(v.kind) &&
+        isDefenseTarget(v.on) &&
+        (v.config === undefined || isDefenseConfig(v.config))
+      );
     default:
       return false;
   }
@@ -96,6 +118,14 @@ export function applyAction(
         return;
       }
       restoreNode(world, action.node, tick, events);
+      return;
+    }
+    case "defense.place": {
+      if (index === undefined) {
+        events.push({ k: "action.rejected", tick, reason: "no-index" });
+        return;
+      }
+      placeDefense(world, index, action, tick, DEFENSE_PLACEMENT_LATENCY_TICKS, events);
       return;
     }
   }

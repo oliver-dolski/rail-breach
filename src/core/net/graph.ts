@@ -14,6 +14,8 @@ export interface NetIndex {
   adjacency: Map<string, Neighbour[]>;
   /** Every link by id, for code that walks a stored path. */
   linkById: Map<string, LinkDef>;
+  /** The links of each conduit, sorted by link id. Only conduits that have a link appear. */
+  conduitLinks: Map<string, LinkDef[]>;
 }
 
 export interface NetPath {
@@ -35,10 +37,16 @@ export function buildNetIndex(content: Pick<Content, "nodes" | "links">): NetInd
   const known = new Set(nodes);
   const adjacency = new Map<string, Neighbour[]>();
   const linkById = new Map<string, LinkDef>();
+  const conduitLinks = new Map<string, LinkDef[]>();
   for (const id of nodes) adjacency.set(id, []);
   for (const link of content.links) {
     if (!known.has(link.a) || !known.has(link.b)) continue;
     linkById.set(link.id, link);
+    if (link.conduit !== undefined) {
+      const members = conduitLinks.get(link.conduit) ?? [];
+      members.push(link);
+      conduitLinks.set(link.conduit, members);
+    }
     adjacency.get(link.a)?.push({ node: link.b, link });
     adjacency.get(link.b)?.push({ node: link.a, link });
   }
@@ -47,7 +55,8 @@ export function buildNetIndex(content: Pick<Content, "nodes" | "links">): NetInd
       x.node !== y.node ? (x.node < y.node ? -1 : 1) : x.link.id < y.link.id ? -1 : 1,
     );
   }
-  return { nodes, adjacency, linkById };
+  for (const members of conduitLinks.values()) members.sort((x, y) => (x.id < y.id ? -1 : 1));
+  return { nodes, adjacency, linkById, conduitLinks };
 }
 
 /** Every node reachable from any start node. */

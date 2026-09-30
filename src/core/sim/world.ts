@@ -1,5 +1,6 @@
 import type { Content, NodeKind, PointPos } from "../../content/types";
 import type { Op } from "../attack/types";
+import type { DefenseInstance } from "../net/defenses";
 import { internKey } from "../rng";
 import { PERMILLE } from "./constants";
 
@@ -117,6 +118,10 @@ export interface World {
   disturbed: string[];
   /** Signals forced dark by a failed object controller (restrictive input, sorted). */
   darkSignals: string[];
+  /** Defenses the user has placed, in placement order. They only narrow links and raise detection. */
+  defenses: DefenseInstance[];
+  /** Number of placements ever made; the next placement gets id d<this + 1>. */
+  defenseSeq: number;
 }
 
 /** Total order on ids: ties are impossible because ids are unique. */
@@ -162,6 +167,8 @@ export function createWorld(content: Content, seed: number): World {
     opSeq: 0,
     disturbed: [],
     darkSignals: [],
+    defenses: [],
+    defenseSeq: 0,
   };
 }
 
@@ -183,5 +190,7 @@ export function cloneWorld(world: World): World {
     opSeq: world.opSeq,
     disturbed: [...world.disturbed],
     darkSignals: [...world.darkSignals],
+    defenses: world.defenses.map((d) => ({ ...d, allow: [...d.allow] })),
+    defenseSeq: world.defenseSeq,
   };
 }
