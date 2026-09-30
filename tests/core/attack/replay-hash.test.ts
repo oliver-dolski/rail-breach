@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { network } from "../../../src/content/network";
 import { stateHash } from "../../../src/core/hash";
@@ -10,6 +11,20 @@ import recordingJson from "../../../src/recordings/phishing-dispatcher.json";
 import { networkIndex, scenario } from "../../fixtures/attack";
 
 const index = networkIndex();
+
+/**
+ * Vendor and product names stay out of tracked code. When this machine has the
+ * untracked deny list, its phrases are added to the leak guard from there.
+ */
+function localDeniedPhrases(): string[] {
+  const file = ".git/info/commit-msg-deny";
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .map((line) => line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"));
+}
 
 function load(): Recording {
   const value: unknown = JSON.parse(JSON.stringify(recordingJson));
@@ -123,9 +138,10 @@ describe("what the recording file is allowed to hold", () => {
   });
 
   it("carries no key, free text, model output or note", () => {
-    expect(text).not.toMatch(
-      /api|key|token|secret|password|sk-|anthropic|claude|openai|model|prompt|transcript|completion|text|note|title|meta/i,
-    );
+    const generic =
+      "api|key|token|secret|password|sk-|model|prompt|transcript|completion|text|note|title|meta";
+    const leak = new RegExp([generic, ...localDeniedPhrases()].join("|"), "i");
+    expect(text).not.toMatch(leak);
   });
 
   it("stays ASCII with no long dashes", () => {
