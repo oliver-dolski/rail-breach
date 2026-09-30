@@ -64,19 +64,27 @@ function baseline(seed: number) {
   return cached;
 }
 
+/** Effects that can take a proceed away from a train that is already running towards it. */
+const WITHDRAWING: readonly string[] = ["blockCommands", "setView"];
+
 /**
  * A lost command channel withdraws the proceed aspect of routes that are set
  * but not yet entered. A train already inside its braking distance of such a
  * signal cannot stop short of it and is brought to a stand inside the overlap,
  * which is an overrun event. That can happen once per train on the line at the
  * moment the channel goes (a train that has overrun then waits out the window),
- * and never beyond the overlap: the invariant is asserted on every tick.
+ * and never beyond the overlap: the invariant is asserted on every tick. The
+ * same holds when an object controller turns unreliable in front of a train: its
+ * sections are read as occupied at once.
  */
 function overrunAllowance(seed: number): number {
   return baseline(seed).overruns + warmWorld(seed).trains.length;
 }
 
-const CYBER_FIELDS = ["integrity", "discovered", "cmdBlocked", "controlDenied"] as const;
+const CYBER_FIELDS = ["integrity", "discovered", "cmdBlocked", "controlDenied", "view"] as const;
+
+/** Higher is worse for the operators. */
+const VIEW_ORDER: Record<string, number> = { ok: 0, spoofed: 1, frozen: 2, blank: 3 };
 
 /** The attacked world may differ from the original only by monotone changes of the cyber fields. */
 function expectOnlyMonotoneCyberChanges(before: World, after: World): void {
@@ -92,6 +100,10 @@ function expectOnlyMonotoneCyberChanges(before: World, after: World): void {
       expect(node[key], `${node.id}.${key}`).toEqual(old[key]);
     }
     expect(node.integrity, `${node.id}.integrity`).toBeGreaterThanOrEqual(old.integrity);
+    // A view may get worse (ok, spoofed, frozen, blank); it never gets better.
+    expect(VIEW_ORDER[node.view], `${node.id}.view`).toBeGreaterThanOrEqual(
+      VIEW_ORDER[old.view] ?? 0,
+    );
     for (const flag of ["discovered", "cmdBlocked", "controlDenied"] as const) {
       // A flag may turn on; it never turns off.
       if (old[flag]) expect(node[flag], `${node.id}.${flag}`).toBe(true);
@@ -148,7 +160,7 @@ describe("the effect code cannot reach the railway", () => {
   const assigned = (source: string): Set<string> =>
     new Set([...source.matchAll(/\b\w+\.(\w+)\s*(?:=|\+=|-=)(?!=)/g)].map((m) => m[1] ?? ""));
 
-  it("applyEffect reads only world.nodes and writes only the four cyber fields", () => {
+  it("applyEffect reads only world.nodes and writes only the cyber fields", () => {
     const source = code("src/core/attack/effects.ts");
     expect([...worldFields(source)].sort()).toEqual(["nodes"]);
     expect([...assigned(source)].sort()).toEqual([...CYBER_FIELDS].sort());
@@ -179,7 +191,7 @@ describe("no effect, on any node, at any seed, makes the railway more permissive
           const later = advance(attacked, OBSERVE_TICKS);
           const overruns = later.events.filter((e) => e.k === "train.overran").length;
           expect(overruns, `${id} seed ${seed}`).toBeLessThanOrEqual(
-            effect.k === "blockCommands" ? overrunAllowance(seed) : baseline(seed).overruns,
+            WITHDRAWING.includes(effect.k) ? overrunAllowance(seed) : baseline(seed).overruns,
           );
         }
       }

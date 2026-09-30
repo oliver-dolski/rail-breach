@@ -1,0 +1,161 @@
+{
+  "attackVersion": "19.2",
+  "source": {
+    "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack-19.2.json",
+    "sha256": "08b83d2cea6b6d6752468ef0e62e2ab2a53c9443ef72c439ecccb07ab9e89da9",
+    "collection": "x-mitre-collection--90c00720-636b-4485-b342-8751d232bf09",
+    "modified": "2026-08-05T21:34:28.409Z"
+  },
+  "techniques": [
+    {
+      "id": "T0803",
+      "name": "Block Command Message",
+      "tactic": "inhibit-response-function",
+      "tactics": ["inhibit-response-function"],
+      "revoked": true,
+      "supersededBy": "T1691.001",
+      "attackVersion": "19.2",
+      "source": "attack-pattern--008b8f56-6107-48be-aa9f-746f927dbb61"
+    },
+    {
+      "id": "T0813",
+      "name": "Denial of Control",
+      "tactic": "impact",
+      "tactics": ["impact"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--e33c7ecc-5a38-497f-beb2-a9a2049a4c20"
+    },
+    {
+      "id": "T0822",
+      "name": "External Remote Services",
+      "tactic": "initial-access",
+      "tactics": ["initial-access"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--8d2f3bab-507c-4424-b58b-edc977bd215c"
+    },
+    {
+      "id": "T0829",
+      "name": "Loss of View",
+      "tactic": "impact",
+      "tactics": ["impact"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--138979ba-0430-4de6-a128-2fc0b056ba36"
+    },
+    {
+      "id": "T0836",
+      "name": "Modify Parameter",
+      "tactic": "impair-process-control",
+      "tactics": ["impair-process-control"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--097924ce-a9a9-4039-8591-e0deedfb8722"
+    },
+    {
+      "id": "T0840",
+      "name": "Network Connection Enumeration",
+      "tactic": "discovery",
+      "tactics": ["discovery"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--ea0c980c-5cf0-43a7-a049-59c4c207566e"
+    },
+    {
+      "id": "T0855",
+      "name": "Unauthorized Command Message",
+      "tactic": "impair-process-control",
+      "tactics": ["impair-process-control"],
+      "revoked": true,
+      "supersededBy": "T1692.001",
+      "attackVersion": "19.2",
+      "source": "attack-pattern--40b300ba-f553-48bf-862e-9471b220d455"
+    },
+    {
+      "id": "T0856",
+      "name": "Spoof Reporting Message",
+      "tactic": "evasion",
+      "tactics": ["evasion", "impair-process-control"],
+      "revoked": true,
+      "supersededBy": "T1692.002",
+      "attackVersion": "19.2",
+      "source": "attack-pattern--8535b71e-3c12-4258-a4ab-40257a1becc4"
+    },
+    {
+      "id": "T0859",
+      "name": "Valid Accounts",
+      "tactic": "persistence",
+      "tactics": ["persistence", "lateral-movement"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--cd2c76a4-5e23-4ca5-9c40-d5e0604f7101"
+    },
+    {
+      "id": "T0865",
+      "name": "Spearphishing Attachment",
+      "tactic": "initial-access",
+      "tactics": ["initial-access"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--648f995e-9c3a-41e4-aeee-98bb41037426"
+    },
+    {
+      "id": "T0866",
+      "name": "Exploitation of Remote Services",
+      "tactic": "initial-access",
+      "tactics": ["initial-access", "lateral-movement"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--85a45294-08f1-4539-bf00-7da08aa7b0ee"
+    },
+    {
+      "id": "T0880",
+      "name": "Loss of Safety",
+      "tactic": "impact",
+      "tactics": ["impact"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--5fa00fdd-4a55-4191-94a0-564181d7fec2"
+    },
+    {
+      "id": "T0886",
+      "name": "Remote Services",
+      "tactic": "initial-access",
+      "tactics": ["initial-access", "lateral-movement"],
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--e1f9cdd2-9511-4fca-90d7-f3e92cfdd0bf"
+    },
+    {
+      "id": "T1691.001",
+      "name": "Block Operational Technology Message: Command Message",
+      "tactic": "inhibit-response-function",
+      "tactics": ["inhibit-response-function"],
+      "legacyId": "T0803",
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--15ca2a99-2d3e-457f-b1d7-c52a1d5849c9"
+    },
+    {
+      "id": "T1692.001",
+      "name": "Unauthorized Message: Command Message",
+      "tactic": "evasion",
+      "tactics": ["evasion", "impair-process-control"],
+      "legacyId": "T0855",
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--4344d1b8-968b-4697-9ab9-f9abe5f52265"
+    },
+    {
+      "id": "T1692.002",
+      "name": "Unauthorized Message: Reporting Message",
+      "tactic": "evasion",
+      "tactics": ["evasion", "impair-process-control"],
+      "legacyId": "T0856",
+      "revoked": false,
+      "attackVersion": "19.2",
+      "source": "attack-pattern--527106b3-95a2-4ed2-bf89-db7f0e4d0da0"
+    }
+  ]
+}

@@ -8,8 +8,20 @@ import type { NodeKind, Protocol } from "../../content/types";
 
 export type TechniqueId = string;
 
-/** Tactic labels as ATT&CK for ICS v19.2 names them. Extended as the catalogue grows. */
-export type TacticId = "initial-access" | "lateral-movement" | "discovery";
+/**
+ * Tactic labels as the ATT&CK for ICS v19.2 bundle spells them (the kill-chain
+ * phase names). A technique lists several in the bundle; its definition names the
+ * one the engine files it under, and the catalogue test checks it is one of them.
+ */
+export type TacticId =
+  | "initial-access"
+  | "persistence"
+  | "lateral-movement"
+  | "discovery"
+  | "evasion"
+  | "impair-process-control"
+  | "inhibit-response-function"
+  | "impact";
 
 /** 1 is a user-level foothold, 2 admin or system. Matches NodeState.integrity. */
 export type Privilege = 1 | 2;
@@ -38,7 +50,7 @@ export type Precondition =
  * construction: each member only adds attacker knowledge or takes something
  * away from the operators. There is deliberately no member that could clear a
  * lock, show a proceed aspect, move a point or move a train, and applyEffect
- * touches nothing but the four cyber fields of a NodeState.
+ * touches nothing but the cyber fields of a NodeState.
  *
  * `onTag` limits an effect to targets carrying that tag.
  */
@@ -46,7 +58,9 @@ export type Effect =
   | { k: "foothold"; priv: Privilege }
   | { k: "discover"; hops: number }
   | { k: "blockCommands"; onTag?: string }
-  | { k: "denyControl"; onTag?: string };
+  | { k: "denyControl"; onTag?: string }
+  /** The operators' picture of the node gets worse, never better: ok, spoofed, frozen, blank. */
+  | { k: "setView"; state: "spoofed" | "frozen" | "blank" };
 
 export type EffectKind = Effect["k"];
 

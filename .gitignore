@@ -13,3 +13,6 @@ scratch/
 # Secrets and local overrides
 .env*
 *.local
+
+# Pinned third-party source bundles fetched by scripts (never committed)
+vendor/

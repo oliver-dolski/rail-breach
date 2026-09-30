@@ -1,14 +1,15 @@
 import type { TechniqueDef } from "../../core/attack/types";
 
 /**
- * The techniques of the first phishing chain, named and numbered as in
- * ATT&CK for ICS v19.2 (checked 2026-09-30). Everything stays at the level of
- * the technique name: no product, no vulnerability identifier, no command and
- * no payload appears anywhere, and the only physical consequence is a
- * railway that stops (see core/attack/effects).
+ * The technique rules, numbered as in ATT&CK for ICS v19.2 (checked 2026-09-30).
+ * Everything stays at the level of the technique name: no product, no
+ * vulnerability identifier, no command and no payload appears anywhere, and the
+ * only physical consequence is a railway that stops (see core/attack/effects).
  *
- * The full catalogue is generated from the pinned ATT&CK bundle in a later
- * phase; these three are written by hand to drive the vertical slice.
+ * The rules are written here; the names, tactics and legacy IDs they must agree
+ * with are generated from the pinned ATT&CK bundle into attack-ics.json
+ * (scripts/build-attack.mjs), and validateTechniques checks every definition
+ * against that catalogue.
  */
 
 export const spearphishingAttachment: TechniqueDef = {
@@ -60,8 +61,25 @@ export const remoteServices: TechniqueDef = {
     "A remote session over a permitted service moves the intruder on; on a system that owns a command channel the intruder holds the session and the operators lose that channel.",
 };
 
+export const unauthorizedReportingMessage: TechniqueDef = {
+  id: "T1692.002",
+  legacyId: "T0856",
+  name: "Unauthorized Message: Reporting Message",
+  tactic: "impair-process-control",
+  protocol: "scada-proto",
+  targets: { kinds: ["hmi", "scada-server"] },
+  pre: [{ k: "reach", from: "foothold", protocol: "scada-proto" }],
+  durationTicks: [25, 40],
+  successPermille: 900,
+  resistance: "host",
+  effects: [{ k: "setView", state: "spoofed" }],
+  explain:
+    "From a foothold on the supervisory path the intruder feeds the operators reports that look right and are not; their picture of the line departs from the track while the interlocking keeps reading its own protected inputs.",
+};
+
 export const techniques: TechniqueDef[] = [
   spearphishingAttachment,
   networkConnectionEnumeration,
   remoteServices,
+  unauthorizedReportingMessage,
 ];
