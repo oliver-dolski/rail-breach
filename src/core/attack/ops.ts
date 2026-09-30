@@ -26,7 +26,11 @@ export function linkPermits(
   return linkAllows(link, protocol, from, to, world, tick);
 }
 
-function matches(selector: NodeSelector, def: NodeDef): boolean {
+/** Whether a technique's target selector admits this node. Every given field must match. */
+export function selectorMatches(
+  selector: NodeSelector,
+  def: Pick<NodeDef, "kind" | "roles" | "tags">,
+): boolean {
   if (selector.kinds !== undefined && !selector.kinds.includes(def.kind)) return false;
   if (selector.roles !== undefined && !selector.roles.some((r) => def.roles.includes(r))) {
     return false;
@@ -61,7 +65,12 @@ interface Evaluation {
 }
 
 /** Checks every precondition and collects each failure, so a refusal is explained whole. */
-function evaluate(world: World, index: Index, def: TechniqueDef, target: string): Evaluation {
+export function evaluate(
+  world: World,
+  index: Index,
+  def: TechniqueDef,
+  target: string,
+): Evaluation {
   const reasons: string[] = [];
   let path: NetPath | null = null;
   const state = world.nodes.find((n) => n.id === target);
@@ -116,7 +125,7 @@ export function launchTechnique(
     reject(`unknown node ${target}`);
     return;
   }
-  if (!matches(def.targets, nodeDef)) {
+  if (!selectorMatches(def.targets, nodeDef)) {
     reject(`${target} is not a valid target for ${def.id}`);
     return;
   }

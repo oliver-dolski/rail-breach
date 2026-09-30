@@ -1,4 +1,5 @@
 import { stepOps } from "../attack/ops";
+import { stepPlaybooks } from "../attack/playbook";
 import { stepDetect } from "../detect/ids";
 import { stepCtc, stepTimetable } from "../rail/ctc";
 import { deriveRailInputs } from "../rail/inputs";
@@ -24,8 +25,8 @@ export interface StepResult {
  * side steps, which keeps small cyber-only fixtures usable.
  *
  * Fixed subsystem order (later plans fill the stubs, the order never changes):
- *   1 apply due actions  2 attack ops  3 detection  4 rail inputs
- *   5 interlocking  6 CTC and timetable  7 trains  8 invariants
+ *   1 apply due actions  2 attack ops (then the playbooks' next steps)  3 detection
+ *   4 rail inputs  5 interlocking  6 CTC and timetable  7 trains  8 invariants
  * Rail inputs (4) are derived once, after the attack ops, and handed to the
  * interlocking (5) and the trains (7), so both read the same restrictive inputs.
  */
@@ -41,6 +42,7 @@ export function step(world: World, dueActions: readonly Action[], index?: Index)
 
   if (index !== undefined) {
     stepOps(next, index, events);
+    stepPlaybooks(next, index, events);
     stepDetect(next, index, events);
     const inputs = deriveRailInputs(next, index);
     stepInterlocking(next, index, events, inputs);

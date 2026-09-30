@@ -79,6 +79,29 @@
         </section>
 
         <section class="block">
+          <h2>Launch a technique</h2>
+          <p class="muted">
+            Search by ID (current or pre-v19), name or everyday wording, pick one, then choose
+            where to aim it. A launch that cannot work is refused, and the log says why.
+          </p>
+          <input
+            id="picker-search"
+            class="field"
+            type="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="T1692.001, T0855, spoof, vpn"
+            aria-label="Search techniques by ID, name or wording"
+          />
+          <div id="picker-list" class="picker-list"></div>
+          <div class="field-row">
+            <select id="picker-target" class="field" aria-label="Target node" disabled></select>
+            <button type="button" id="picker-launch" class="plain" disabled>Launch</button>
+          </div>
+          <p id="picker-note" class="muted" aria-live="polite"></p>
+        </section>
+
+        <section class="block">
           <h2>Defenses</h2>
           <p class="muted">
             Pick a defense, then click a conduit (a thick line between zones) on the map, or use

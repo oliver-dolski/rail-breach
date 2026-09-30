@@ -420,6 +420,84 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.field {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0d131b;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.field:focus-visible {
+  outline: 2px solid var(--detection);
+  outline-offset: 1px;
+}
+
+.field-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.field-row .field {
+  flex: 1 1 auto;
+}
+
+.picker-list {
+  display: grid;
+  gap: 2px;
+  max-height: 180px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+
+.picker-list button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-list button[hidden] {
+  display: none;
+}
+
+.picker-list button:hover {
+  border-color: var(--line);
+}
+
+.picker-list button[aria-pressed="true"] {
+  border-color: var(--attacker);
+}
+
+.picker-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.picker-tactic {
+  flex: none;
+  color: var(--muted);
+}
+
+.field-row button:disabled,
+button.plain:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .legend {
   margin: 0;
   padding: 0;

@@ -60,6 +60,7 @@ const DEFENSE_REFUSALS: Partial<
   "already-placed": "the same defense is already there",
   "defense-limit": "too many defenses are placed",
   "unknown-defense": "no such defense to remove",
+  "playbook-limit": "too many attack sequences are already running",
 };
 
 export function isNewsworthyRefusal(event: Extract<SimEvent, { k: "command.rejected" }>): boolean {

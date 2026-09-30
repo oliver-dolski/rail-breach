@@ -17,6 +17,8 @@ export type RejectReason =
   /** A defense that would change nothing because the same one is already there. */
   | "already-placed"
   | "defense-limit"
+  /** More playbooks still running than the engine takes on. */
+  | "playbook-limit"
   /** A defense.remove for an id that is not placed. */
   | "unknown-defense";
 

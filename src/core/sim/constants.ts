@@ -74,3 +74,12 @@ export const DEFENSE_PLACEMENT_LATENCY_TICKS = 20;
  */
 export const BASELINE_SENSOR_COVERAGE_PERMILLE = 300;
 export const SENSOR_COVERAGE_PERMILLE = 1000;
+
+/**
+ * Playbook pacing and bounds. A step launches this many ticks after the operation of the
+ * one before it ended (the recorded scenario leaves the same two ticks between its
+ * actions). The bounds keep a hostile recording from growing the world without end.
+ */
+export const PLAYBOOK_GAP_TICKS = 2;
+export const MAX_PLAYBOOK_STEPS = 6;
+export const MAX_PLAYBOOKS = 8;

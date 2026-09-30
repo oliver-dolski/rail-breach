@@ -116,3 +116,30 @@ export interface Op {
   hop: number;
   doneAt: number;
 }
+
+/**
+ * Where a playbook step is aimed. One of a node, a role or a zone of the content, never
+ * free text: the engine resolves it to a node when the step launches.
+ */
+export type StepTarget = { node: string } | { role: string } | { zone: string };
+
+/** One step of a playbook: a technique and, optionally, where to aim it. */
+export interface PlaybookStep {
+  technique: TechniqueId;
+  target?: StepTarget;
+}
+
+/**
+ * An ordered list of steps being run one after the other. Plain JSON, lives in World.
+ * Each step launches once the operation of the one before it has ended, so a step that
+ * needs the foothold an earlier step wins finds it (or is refused with its reasons).
+ */
+export interface PlaybookState {
+  steps: PlaybookStep[];
+  /** Index of the next step to launch. */
+  next: number;
+  /** Id of the operation the playbook waits for, or -1 while none is in flight. */
+  waitOp: number;
+  /** The earliest tick the next step may launch on. */
+  readyAt: number;
+}

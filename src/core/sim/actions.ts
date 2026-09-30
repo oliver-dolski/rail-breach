@@ -1,5 +1,7 @@
 import { restoreNode } from "../attack/effects";
 import { launchTechnique } from "../attack/ops";
+import { isPlaybookSteps } from "../attack/playbook";
+import type { PlaybookStep } from "../attack/types";
 import {
   type DefenseConfig,
   type DefenseKind,
@@ -11,7 +13,7 @@ import {
   removeDefense,
 } from "../net/defenses";
 import { enqueueRequest } from "../rail/interlocking";
-import { DEFENSE_PLACEMENT_LATENCY_TICKS } from "./constants";
+import { DEFENSE_PLACEMENT_LATENCY_TICKS, MAX_PLAYBOOKS } from "./constants";
 import type { SimEvent } from "./events";
 import type { Index } from "./model";
 import type { World } from "./world";
@@ -39,7 +41,13 @@ export type Action =
    */
   | { type: "defense.place"; kind: DefenseKind; on: DefenseTarget; config?: DefenseConfig }
   /** Take a placed defense away, by the id the placement was given. */
-  | { type: "defense.remove"; id: string };
+  | { type: "defense.remove"; id: string }
+  /**
+   * Run resolved steps in order, each launching when the operation before it has ended.
+   * Steps name a technique and at most a node, role or zone of the content: what a mapper
+   * produces after validation, never free text.
+   */
+  | { type: "playbook.start"; steps: PlaybookStep[] };
 
 /** The keys each action type may carry, and no others. */
 const ACTION_KEYS = new Map<string, readonly string[]>([
@@ -50,6 +58,7 @@ const ACTION_KEYS = new Map<string, readonly string[]>([
   ["restore", ["type", "node"]],
   ["defense.place", ["type", "kind", "on", "config"]],
   ["defense.remove", ["type", "id"]],
+  ["playbook.start", ["type", "steps"]],
 ]);
 
 /**
@@ -80,6 +89,8 @@ export function isAction(value: unknown): value is Action {
       );
     case "defense.remove":
       return typeof v.id === "string";
+    case "playbook.start":
+      return isPlaybookSteps(v.steps);
     default:
       return false;
   }
@@ -137,5 +148,22 @@ export function applyAction(
     case "defense.remove":
       removeDefense(world, action.id, tick, events);
       return;
+    case "playbook.start": {
+      if (index === undefined) {
+        events.push({ k: "action.rejected", tick, reason: "no-index" });
+        return;
+      }
+      if (world.playbooks.length >= MAX_PLAYBOOKS) {
+        events.push({ k: "action.rejected", tick, reason: "playbook-limit" });
+        return;
+      }
+      const steps = action.steps.map((s) =>
+        s.target === undefined
+          ? { technique: s.technique }
+          : { technique: s.technique, target: { ...s.target } },
+      );
+      world.playbooks.push({ steps, next: 0, waitOp: -1, readyAt: tick });
+      return;
+    }
   }
 }
