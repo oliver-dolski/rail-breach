@@ -1,4 +1,5 @@
 import type { RouteDef, SignalDef, TrackContent } from "../../content/types";
+import { STOP_TOLERANCE_DM } from "../sim/constants";
 import type { PointState, World } from "../sim/world";
 import { compareId } from "../sim/world";
 import { buildTrackGraph, FREE, OCCUPIED, type TrackGraph } from "./trackGraph";
@@ -82,15 +83,39 @@ function intersects(a: readonly number[], b: readonly number[]): boolean {
 }
 
 /**
+ * A held route's overlap only guards against an overrun past its end signal.
+ * Once the train stands still at that signal there is nothing left to guard,
+ * and keeping the overlap locked would let two trains that converge on one
+ * block each wait for the other's overlap for ever.
+ */
+export function overlapReleased(world: World, rail: RailIndex, held: RouteInfo): boolean {
+  const end = held.endSignal;
+  if (end === undefined) return false;
+  for (const train of world.trains) {
+    if (train.speedDmPerTick !== 0) continue;
+    const next = rail.graph.services.get(train.service)?.sigs[train.sig];
+    if (next?.signal.id === end.id && next.posDm - train.posDm <= 2 * STOP_TOLERANCE_DM)
+      return true;
+  }
+  return false;
+}
+
+/**
  * True when `requested` cannot be locked while `locked` is held. Not symmetric on
  * purpose: the route that continues from a route's end signal may share that
  * route's overlap (the train runs from one into the other), but the route behind
  * a held continuation may not, because its overlap would sit on live track.
+ * `lockedOverlapReleased` drops the held route's overlap from the test.
  */
-export function conflictsWith(locked: RouteInfo, requested: RouteInfo): boolean {
+export function conflictsWith(
+  locked: RouteInfo,
+  requested: RouteInfo,
+  lockedOverlapReleased = false,
+): boolean {
   if (intersects(locked.blockSections, requested.blockSections)) return true;
   if (intersects(requested.overlapSections, locked.blockSections)) return true;
   if (
+    !lockedOverlapReleased &&
     intersects(locked.overlapSections, requested.blockSections) &&
     requested.entry.id !== locked.endSignal?.id
   ) {
@@ -139,7 +164,7 @@ export function proveRoute(
     for (const lock of il.locks) {
       if (lock.route === route.def.id) return { ok: false, reason: "route is already set" };
       const held = routes.byId.get(lock.route);
-      if (held && conflictsWith(held, route)) {
+      if (held && conflictsWith(held, route, overlapReleased(world, rail, held))) {
         return { ok: false, reason: `conflicts with locked route ${lock.route}` };
       }
     }

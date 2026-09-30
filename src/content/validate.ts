@@ -1,4 +1,7 @@
-import type { Content } from "./types";
+import { buildNetIndex, reachableFrom } from "../core/net/graph";
+import { emergencyBrakeDistance } from "../core/rail/kinematics";
+import { MAX_SPEED_DM_PER_TICK, TRAIN_LENGTH_DM } from "../core/sim/constants";
+import type { Content, NodeDef } from "./types";
 
 export class ContentError extends Error {
   constructor(readonly problems: readonly string[]) {
@@ -7,6 +10,17 @@ export class ContentError extends Error {
   }
 }
 
+function idSet(kind: string, items: readonly { id: string }[], problems: string[]): Set<string> {
+  const seen = new Set<string>();
+  for (const { id } of items) {
+    if (seen.has(id)) problems.push(`duplicate ${kind} id "${id}"`);
+    seen.add(id);
+  }
+  return seen;
+}
+
+const isCount = (n: number, min: number): boolean => Number.isInteger(n) && n >= min;
+
 /**
  * Referential-integrity check run at load. Collects every problem and throws
  * one ContentError, so an authoring mistake is reported whole, not one id at a time.
@@ -14,20 +28,11 @@ export class ContentError extends Error {
 export function validateContent(content: Content): void {
   const problems: string[] = [];
 
-  const idSet = (kind: string, items: readonly { id: string }[]): Set<string> => {
-    const seen = new Set<string>();
-    for (const { id } of items) {
-      if (seen.has(id)) problems.push(`duplicate ${kind} id "${id}"`);
-      seen.add(id);
-    }
-    return seen;
-  };
-
-  const zones = idSet("zone", content.zones);
-  const nodes = idSet("node", content.nodes);
-  idSet("link", content.links);
-  const conduits = idSet("conduit", content.conduits);
-  const interlockings = idSet("interlocking", content.interlockings);
+  const zones = idSet("zone", content.zones, problems);
+  const nodes = idSet("node", content.nodes, problems);
+  idSet("link", content.links, problems);
+  const conduits = idSet("conduit", content.conduits, problems);
+  const interlockings = idSet("interlocking", content.interlockings, problems);
 
   const zoneOf = new Map<string, string>();
   for (const node of content.nodes) {
@@ -60,8 +65,6 @@ export function validateContent(content: Content): void {
     conduitZones.set(conduit.id, [conduit.zoneA, conduit.zoneB]);
   }
 
-  const adjacency = new Map<string, string[]>();
-  for (const id of nodes) adjacency.set(id, []);
   for (const link of content.links) {
     let endpointsOk = true;
     for (const end of [link.a, link.b]) {
@@ -77,8 +80,6 @@ export function validateContent(content: Content): void {
       problems.push(`link "${link.id}" references unknown conduit "${link.conduit}"`);
     }
     if (!endpointsOk) continue;
-    adjacency.get(link.a)?.push(link.b);
-    adjacency.get(link.b)?.push(link.a);
 
     const za = zoneOf.get(link.a);
     const zb = zoneOf.get(link.b);
@@ -105,22 +106,243 @@ export function validateContent(content: Content): void {
   if (externals.length === 0) {
     problems.push("no external pseudo-node: the attacker has no origin");
   } else {
-    const reached = new Set<string>(externals);
-    const queue = [...externals];
-    for (let head = 0; head < queue.length; head++) {
-      const at = queue[head];
-      if (at === undefined) continue;
-      for (const next of adjacency.get(at) ?? []) {
-        if (!reached.has(next)) {
-          reached.add(next);
-          queue.push(next);
-        }
-      }
-    }
+    const reached = reachableFrom(buildNetIndex(content), externals);
     for (const id of nodes) {
       if (!reached.has(id)) problems.push(`node "${id}" is unreachable from the external node`);
     }
   }
 
+  validateTracks(content, interlockings, problems);
+
   if (problems.length > 0) throw new ContentError(problems);
+}
+
+function validateTracks(content: Content, interlockings: Set<string>, problems: string[]): void {
+  const t = content.tracks;
+  const nodeById = new Map<string, NodeDef>(content.nodes.map((n) => [n.id, n]));
+  const vmax = t.vmaxDmPerTick;
+  const vmaxOk = isCount(vmax, 1) && vmax <= MAX_SPEED_DM_PER_TICK;
+  if (!vmaxOk) problems.push(`vmaxDmPerTick must be an integer 1..${MAX_SPEED_DM_PER_TICK}`);
+  const emergency = vmaxOk ? emergencyBrakeDistance(vmax) : 0;
+
+  const blockIds = idSet("block", t.blocks, problems);
+  idSet("point", t.points, problems);
+  idSet("signal", t.signals, problems);
+  idSet("route", t.routes, problems);
+  idSet("service", t.services, problems);
+
+  const checkController = (owner: string, id: string, expectedIl?: string): void => {
+    const node = nodeById.get(id);
+    if (node === undefined) {
+      problems.push(`${owner} names unknown controller "${id}"`);
+    } else if (node.kind !== "object-controller") {
+      problems.push(`${owner} controller "${id}" is not an object controller`);
+    } else if (expectedIl !== undefined && node.controls !== expectedIl) {
+      problems.push(
+        `${owner} controller "${id}" belongs to "${node.controls}", not "${expectedIl}"`,
+      );
+    }
+  };
+
+  const blocks = new Map(t.blocks.map((b) => [b.id, b]));
+  const sectionShape = new Map<string, { lengthDm: number; controller: string }>();
+  for (const block of t.blocks) {
+    if (!isCount(block.lengthDm, 1)) {
+      problems.push(`block "${block.id}" lengthDm must be a positive integer`);
+    }
+    if (block.section === "") problems.push(`block "${block.id}" has no section`);
+    for (const next of block.next) {
+      if (!blockIds.has(next)) {
+        problems.push(`block "${block.id}" continues into unknown block "${next}"`);
+      }
+    }
+    checkController(`block "${block.id}"`, block.controller);
+    const seen = sectionShape.get(block.section);
+    if (seen === undefined) {
+      sectionShape.set(block.section, { lengthDm: block.lengthDm, controller: block.controller });
+    } else if (seen.lengthDm !== block.lengthDm || seen.controller !== block.controller) {
+      problems.push(
+        `blocks sharing section "${block.section}" must have one length and one controller`,
+      );
+    }
+  }
+
+  for (const signal of t.signals) {
+    const owner = `signal "${signal.id}"`;
+    const block = blocks.get(signal.block);
+    if (block === undefined) {
+      problems.push(`${owner} stands on unknown block "${signal.block}"`);
+    } else {
+      if (signal.atDm !== block.lengthDm) {
+        problems.push(`${owner} must stand at the far end of block "${block.id}"`);
+      }
+      for (const next of block.next) {
+        const after = blocks.get(next);
+        if (after !== undefined && after.lengthDm < signal.overlapDm) {
+          problems.push(
+            `${owner} overlap of ${signal.overlapDm} dm does not fit in block "${next}"`,
+          );
+        }
+      }
+    }
+    if (!interlockings.has(signal.interlocking)) {
+      problems.push(`${owner} belongs to unknown interlocking "${signal.interlocking}"`);
+    }
+    checkController(owner, signal.controller, signal.interlocking);
+    if (!Number.isInteger(signal.overlapDm) || signal.overlapDm < emergency) {
+      problems.push(
+        `${owner} overlap of ${signal.overlapDm} dm is shorter than the emergency braking distance of ${emergency} dm at vmax`,
+      );
+    }
+  }
+
+  const sectionIds = new Set(t.blocks.map((b) => b.section));
+  for (const point of t.points) {
+    const owner = `point "${point.id}"`;
+    if (!interlockings.has(point.interlocking)) {
+      problems.push(`${owner} belongs to unknown interlocking "${point.interlocking}"`);
+    }
+    checkController(owner, point.controller, point.interlocking);
+    if (!isCount(point.movingTicks, 1)) {
+      problems.push(`${owner} movingTicks must be an integer >= 1`);
+    }
+    for (const id of [point.toe, point.normal, point.reverse]) {
+      if (!blockIds.has(id)) problems.push(`${owner} names unknown block "${id}"`);
+    }
+    if (point.normal === point.reverse) problems.push(`${owner} has the same block on both legs`);
+    for (const id of point.zone) {
+      if (!sectionIds.has(id)) problems.push(`${owner} zone names unknown section "${id}"`);
+    }
+  }
+
+  const points = new Map(t.points.map((p) => [p.id, p]));
+  const signals = new Map(t.signals.map((s) => [s.id, s]));
+  const endSignalOf = (blockId: string) =>
+    t.signals.find((s) => s.block === blockId && blocks.get(blockId)?.lengthDm === s.atDm);
+  const entryKeys = new Set<string>();
+
+  for (const route of t.routes) {
+    const owner = `route "${route.id}"`;
+    const entry = signals.get(route.entrySignal);
+    if (entry === undefined) {
+      problems.push(`${owner} names unknown entry signal "${route.entrySignal}"`);
+    } else if (entry.interlocking !== route.interlocking) {
+      problems.push(
+        `${owner} belongs to "${route.interlocking}" but its entry signal to "${entry.interlocking}"`,
+      );
+    }
+    if (!interlockings.has(route.interlocking)) {
+      problems.push(`${owner} belongs to unknown interlocking "${route.interlocking}"`);
+    }
+    const firstBlock = route.blocks[0];
+    if (firstBlock === undefined) {
+      problems.push(`${owner} has no blocks`);
+      continue;
+    }
+    for (const id of [...route.blocks, ...route.overlap]) {
+      if (!blockIds.has(id)) problems.push(`${owner} names unknown block "${id}"`);
+    }
+    const key = `${route.entrySignal}>${firstBlock}`;
+    if (entryKeys.has(key)) {
+      problems.push(`${owner} duplicates another route from the same signal into the same block`);
+    }
+    entryKeys.add(key);
+
+    const entryBlock = entry === undefined ? undefined : blocks.get(entry.block);
+    if (entryBlock !== undefined && !entryBlock.next.includes(firstBlock)) {
+      problems.push(`${owner} does not continue from the block of its entry signal`);
+    }
+    route.blocks.forEach((id, i) => {
+      const after = route.blocks[i + 1];
+      if (after !== undefined && !blocks.get(id)?.next.includes(after)) {
+        problems.push(`${owner} blocks "${id}" and "${after}" are not connected`);
+      }
+    });
+    for (const want of route.points) {
+      const point = points.get(want.point);
+      if (point === undefined) {
+        problems.push(`${owner} names unknown point "${want.point}"`);
+        continue;
+      }
+      const leg = want.pos === "normal" ? point.normal : point.reverse;
+      if (!route.blocks.includes(leg) && leg !== entry?.block) {
+        problems.push(`${owner} sets point "${want.point}" ${want.pos} but never uses that leg`);
+      }
+    }
+
+    const last = route.blocks[route.blocks.length - 1] ?? firstBlock;
+    const lastBlock = blocks.get(last);
+    if (lastBlock !== undefined) {
+      if (endSignalOf(last) === undefined) {
+        if (lastBlock.next.length > 0) {
+          problems.push(`${owner} ends in "${last}" without a signal though the line continues`);
+        }
+        if (route.overlap.length > 0) {
+          problems.push(`${owner} has an overlap but ends at the end of the line`);
+        }
+      } else {
+        for (const next of lastBlock.next) {
+          if (!route.overlap.includes(next)) {
+            problems.push(`${owner} overlap does not cover the continuation into "${next}"`);
+          }
+        }
+        for (const id of route.overlap) {
+          if (!lastBlock.next.includes(id)) {
+            problems.push(`${owner} overlap block "${id}" is not beyond its end signal`);
+          }
+        }
+      }
+    }
+  }
+
+  for (const service of t.services) {
+    const owner = `service "${service.id}"`;
+    if (service.path.length < 2) problems.push(`${owner} needs a path of at least two blocks`);
+    if (!isCount(service.firstTick, 1)) problems.push(`${owner} firstTick must be an integer >= 1`);
+    if (!isCount(service.headwayTicks, 1)) {
+      problems.push(`${owner} headwayTicks must be an integer >= 1`);
+    }
+    if (!isCount(service.count, 1)) problems.push(`${owner} count must be an integer >= 1`);
+    const unknown = service.path.filter((id) => !blockIds.has(id));
+    for (const id of unknown) problems.push(`${owner} path names unknown block "${id}"`);
+    if (unknown.length > 0) continue;
+
+    if ((blocks.get(service.path[0] ?? "")?.lengthDm ?? 0) < TRAIN_LENGTH_DM) {
+      problems.push(`${owner} starts in a block shorter than a train`);
+    }
+    service.path.forEach((id, i) => {
+      const after = service.path[i + 1];
+      if (after === undefined) return;
+      if (!blocks.get(id)?.next.includes(after)) {
+        problems.push(`${owner} path blocks "${id}" and "${after}" are not connected`);
+        return;
+      }
+      const signal = endSignalOf(id);
+      if (signal === undefined) return;
+      const route = t.routes.find((r) => r.entrySignal === signal.id && r.blocks[0] === after);
+      if (route === undefined) {
+        problems.push(
+          `${owner} passes signal "${signal.id}" into "${after}" but no route allows it`,
+        );
+        return;
+      }
+      route.blocks.forEach((rb, j) => {
+        if (service.path[i + 1 + j] !== rb) {
+          problems.push(`${owner} leaves route "${route.id}" before its end`);
+        }
+      });
+    });
+    let from = 0;
+    for (const stop of service.stops) {
+      const at = service.path.indexOf(stop.block, from);
+      if (at < 0) {
+        problems.push(`${owner} stops at "${stop.block}" which is not on its path in order`);
+      } else {
+        from = at + 1;
+      }
+      if (!isCount(stop.dwellTicks, 0)) {
+        problems.push(`${owner} dwell at "${stop.block}" must be an integer >= 0`);
+      }
+    }
+  }
 }

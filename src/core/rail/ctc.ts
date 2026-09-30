@@ -3,7 +3,7 @@ import type { SimEvent } from "../sim/events";
 import type { Index } from "../sim/model";
 import { compareId, type World } from "../sim/world";
 import { enqueueRequest } from "./interlocking";
-import { conflictsWith } from "./routes";
+import { conflictsWith, overlapReleased } from "./routes";
 import { computeOccupancy, FREE, type ServiceGeometry } from "./trackGraph";
 
 /**
@@ -34,7 +34,9 @@ function canSpawn(world: World, index: Index, geometry: ServiceGeometry, occ: Ui
     for (const il of world.interlockings) {
       for (const lock of il.locks) {
         const held = routes.byId.get(lock.route);
-        if (held && conflictsWith(held, route)) return false;
+        if (held && conflictsWith(held, route, overlapReleased(world, index.rail, held))) {
+          return false;
+        }
       }
     }
   }

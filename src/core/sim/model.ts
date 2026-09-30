@@ -1,4 +1,5 @@
 import type { Content } from "../../content/types";
+import { buildNetIndex, type NetIndex } from "../net/graph";
 import { buildRailIndex, type RailIndex } from "../rail/routes";
 
 /**
@@ -8,6 +9,7 @@ import { buildRailIndex, type RailIndex } from "../rail/routes";
  */
 export interface Index {
   rail: RailIndex;
+  net: NetIndex;
   /** Run assertInvariants after every step. On in tests and dev builds. */
   checkInvariants: boolean;
 }
@@ -19,6 +21,7 @@ export interface IndexOptions {
 export function buildIndex(content: Content, options: IndexOptions = {}): Index {
   return {
     rail: buildRailIndex(content.tracks),
+    net: buildNetIndex(content),
     checkInvariants: options.checkInvariants ?? false,
   };
 }
