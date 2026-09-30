@@ -1,4 +1,5 @@
-import type { TechniqueDef } from "../../core/attack/types";
+import { selectorMatches } from "../../core/attack/ops";
+import type { PlaybookStep, TechniqueDef } from "../../core/attack/types";
 import { isAction } from "../../core/sim/actions";
 import type { Content } from "../types";
 import { ContentError } from "../validate";
@@ -28,6 +29,38 @@ export function validateScenario(
   const conduits = new Set(content.conduits.map((c) => c.id));
   const links = new Set(content.links.map((l) => l.id));
   const known = new Set(techniques.flatMap((t) => [t.id, t.legacyId ?? t.id]));
+  const byId = new Map<string, TechniqueDef>();
+  for (const t of techniques) {
+    byId.set(t.id, t);
+    if (t.legacyId !== undefined) byId.set(t.legacyId, t);
+  }
+  /** The machines `technique` may be aimed at, as the engine's own selector decides. */
+  const admitted = (technique: string) => {
+    const def = byId.get(technique);
+    return content.nodes.filter((n) => def !== undefined && selectorMatches(def.targets, n));
+  };
+  /** Why a playbook step can never find a machine, or undefined when it can. */
+  const stepProblem = (step: PlaybookStep, n: number): string | undefined => {
+    if (!known.has(step.technique)) return undefined;
+    const fits = admitted(step.technique);
+    const t = step.target;
+    if (t === undefined) {
+      return fits.length === 0
+        ? `${owner} step ${n}: no machine is a valid target for ${step.technique}`
+        : undefined;
+    }
+    if ("node" in t) {
+      if (!nodes.has(t.node)) return undefined;
+      return fits.some((f) => f.id === t.node)
+        ? undefined
+        : `${owner} step ${n}: "${t.node}" is not a valid target for ${step.technique}`;
+    }
+    const [kind, value] = "role" in t ? (["role", t.role] as const) : (["zone", t.zone] as const);
+    const hit = fits.some((f) => (kind === "role" ? f.roles.includes(value) : f.zone === value));
+    return hit
+      ? undefined
+      : `${owner} step ${n}: no machine with ${kind} "${value}" is a valid target for ${step.technique}`;
+  };
 
   if (scenario.id === "") problems.push("a scenario has an empty id");
   if (scenario.title === "") problems.push(`${owner} has no title`);
@@ -66,14 +99,19 @@ export function validateScenario(
         if (!known.has(a.technique)) problems.push(`${owner} launches unknown ${a.technique}`);
         if (!nodes.has(a.target))
           problems.push(`${owner} aims ${a.technique} at unknown "${a.target}"`);
+        else if (known.has(a.technique) && !admitted(a.technique).some((n) => n.id === a.target)) {
+          problems.push(`${owner} aims ${a.technique} at "${a.target}", which it cannot target`);
+        }
         break;
       case "playbook.start":
-        for (const step of a.steps) {
+        a.steps.forEach((step, i) => {
           if (!known.has(step.technique)) problems.push(`${owner} plays unknown ${step.technique}`);
           if (step.target !== undefined && "node" in step.target && !nodes.has(step.target.node)) {
             problems.push(`${owner} aims ${step.technique} at unknown "${step.target.node}"`);
           }
-        }
+          const problem = stepProblem(step, i + 1);
+          if (problem !== undefined) problems.push(problem);
+        });
         break;
       case "assume.breach":
         if (t !== 1) problems.push(`${owner} assumes a breach at tick ${t}, not at the first tick`);

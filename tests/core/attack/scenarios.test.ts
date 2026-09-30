@@ -362,6 +362,35 @@ describe("a scenario that does not fit the content is refused whole", () => {
     expect(text).toMatch(/not in tick order/);
   });
 
+  it("refuses a launch or a playbook step that no machine can ever satisfy, naming the step", () => {
+    // T0865 can only be aimed at corporate workstations.
+    const bad: Scenario = {
+      ...good,
+      actions: [
+        ...good.actions,
+        { t: 10, a: { type: "technique.launch", technique: "T0865", target: "il-vel" } },
+        {
+          t: 20,
+          a: {
+            type: "playbook.start",
+            steps: [
+              { technique: "T0865", target: { role: "dispatcher-ws" } },
+              { technique: "T0865", target: { node: "il-vel" } },
+              { technique: "T0865", target: { role: "no-such-role" } },
+              { technique: "T0865", target: { zone: "trackside" } },
+            ],
+          },
+        },
+      ],
+    };
+    const text = problems(bad).join("\n");
+    expect(text).toMatch(/aims T0865 at "il-vel", which it cannot target/);
+    expect(text).toMatch(/step 2: "il-vel" is not a valid target for T0865/);
+    expect(text).toMatch(/step 3: no machine with role "no-such-role"/);
+    expect(text).toMatch(/step 4: no machine with zone "trackside"/);
+    expect(text).not.toMatch(/step 1:/);
+  });
+
   it("an engine that is handed the list of a scenario that failed validation never starts it", () => {
     expect(() =>
       createAttractSession({
