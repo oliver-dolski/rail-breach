@@ -8,7 +8,7 @@ import {
 import type { RenderView } from "../view";
 
 /**
- * The map itself, drawn back to front: zone outlines, links, track, set routes,
+ * The map itself, drawn back to front: zone outlines, links, track, set routes, lit alert links,
  * trains, then the glyphs that must stay readable on top (signal lamps, halos,
  * nodes). Particles go over all of it in their own layer.
  */
@@ -23,6 +23,7 @@ export function drawMap(
   drawLines(gl, prims, view.links, frame);
   drawLines(gl, prims, view.track, frame);
   drawLines(gl, prims, view.routes, frame);
+  drawLines(gl, prims, view.alerts, frame);
   drawLines(gl, prims, view.defenseArrows, frame);
   drawLines(gl, prims, view.trains, frame);
   drawDiscs(gl, prims, view.signals, frame);

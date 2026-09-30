@@ -2,16 +2,18 @@ import "../ui/style.css";
 import { layout } from "../content/layout";
 import { network } from "../content/network";
 import { techniques } from "../content/techniques";
+import type { World } from "../core/sim/world";
 import { buildMapperContext } from "../mapper/context";
 import { keywordMapper } from "../mapper/keyword";
 import { createLlmMapper } from "../mapper/llm";
 import recordingJson from "../recordings/phishing-dispatcher.json";
+import { AlertFlashes } from "../render/flashes";
 import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
 import { ALERT_COLORS, cssColor, DEFENSE_COLORS, SIGNAL_COLORS } from "../render/palette";
 import { ParticleRing, packetParticles } from "../render/particleRing";
 import { MapRenderer } from "../render/renderer";
-import { buildView, createViewContext, nearestConduit } from "../render/view";
+import { buildView, createViewContext, nearestConduit, reportingState } from "../render/view";
 import { setText } from "../ui/dom";
 import {
   CONTEXT_LOST_MESSAGE,
@@ -27,6 +29,7 @@ import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
 import { createPicker } from "../ui/panel/picker";
 import { createRefreshGate } from "../ui/panel/refresh";
+import { createViewToggle } from "../ui/panel/viewmode";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
@@ -87,6 +90,10 @@ function boot(): void {
     onAction: (action) => session.dispatch(action),
   });
   const ring = new ParticleRing();
+  const flashes = new AlertFlashes();
+  const viewToggle = createViewToggle(document);
+  /** The last world whose operator feed was good: what a frozen console keeps showing. */
+  let lastGood: World | undefined;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const fallbackEls = {
@@ -207,9 +214,12 @@ function boot(): void {
         seenGeneration = session.generation();
         log.reset();
         ring.clear();
+        flashes.clear();
+        lastGood = undefined;
       }
       const events = session.drainEvents();
       log.ingest(events, session.scenario.startTick);
+      flashes.ingest(events);
       for (const event of events) {
         if (event.k === "packet") for (const p of packetParticles(event, layout)) ring.push(p);
       }
@@ -218,10 +228,20 @@ function boot(): void {
 
   const render = (alpha: number): void => {
     const world = session.world();
-    const view = buildView(world, viewContext, { prev: session.previous(), alpha });
+    if (reportingState(world) === "ok") lastGood = world;
+    const prev = session.previous();
+    const phase = (prev?.tick ?? world.tick) + alpha;
+    const view = buildView(world, viewContext, {
+      prev,
+      alpha,
+      mode: viewToggle.mode(),
+      lastGood,
+      alerts: flashes.levels(phase, reducedMotion),
+    });
     renderer?.draw(view, ring);
     if (gate.changed(world.tick, session.status())) {
       labels.mark(world);
+      viewToggle.note(view.reporting);
       panel.update(session, view, log);
       defenses.update(world, session.live());
     }

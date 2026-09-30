@@ -2,10 +2,11 @@ import type { Layout, Pt } from "../content/layout";
 import type { Content, NodeKind } from "../content/types";
 import type { DefenseInstance } from "../core/net/defenses";
 import { deriveAspects } from "../core/rail/interlocking";
-import { computeOccupancy, DISTURBED, OCCUPIED } from "../core/rail/trackGraph";
+import { computeOccupancy, DISTURBED, FREE, OCCUPIED } from "../core/rail/trackGraph";
 import { TRAIN_LENGTH_DM } from "../core/sim/constants";
 import type { Index } from "../core/sim/model";
-import type { NodeState, TrainState, World } from "../core/sim/world";
+import type { NodeState, TrainState, ViewState, World } from "../core/sim/world";
+import type { AlertLevel } from "./flashes";
 import { type Polyline, pointAt, polyline } from "./geometry";
 import {
   ALERT_COLORS,
@@ -43,6 +44,13 @@ export interface DiscInstance {
   color: Rgba;
 }
 
+/**
+ * Which picture of the line is drawn. Ground truth is the railway as it is. The operator
+ * view is what the dispatchers' consoles say about it: the same world, read through the
+ * state of the supervisory machines, so a spoofed or frozen feed shows in it and nowhere else.
+ */
+export type ViewMode = "ground-truth" | "operator";
+
 export interface ViewStats {
   trains: number;
   trainsStanding: number;
@@ -75,6 +83,14 @@ export interface RenderView {
   defenses: DiscInstance[];
   /** The arrow of each diode, showing the way it lets data pass. */
   defenseArrows: LineInstance[];
+  /** Links an IDS alert has just lit up, in the detection hue. Empty without alerts. */
+  alerts: LineInstance[];
+  mode: ViewMode;
+  /** The state of the operators' feed in this world, whichever picture is drawn. */
+  reporting: ViewState;
+  /** Trains drawn on the map: fewer than stats.trains when the operator picture hides some. */
+  trainsShown: number;
+  /** Counts always describe the real railway, so the panel never shows a spoofed number. */
   stats: ViewStats;
 }
 
@@ -83,6 +99,16 @@ export interface ViewOptions {
   prev?: World;
   /** 0..1 position between prev and world. */
   alpha?: number;
+  /** Ground truth by default. */
+  mode?: ViewMode;
+  /**
+   * An earlier snapshot from when the operators' feed was still good, which is what a
+   * frozen console keeps showing. Held by the caller like `prev`; it is only ever read.
+   * Without it a frozen feed is drawn as unknown.
+   */
+  lastGood?: World;
+  /** How brightly each link an IDS alert lit up is lit right now (see flashes.ts). */
+  alerts?: readonly AlertLevel[];
 }
 
 interface DrawBlock {
@@ -97,6 +123,7 @@ export interface ViewContext {
   index: Index;
   layout: Layout;
   links: { id: string; a: Pt; b: Pt; conduit: string }[];
+  linkById: Map<string, { a: Pt; b: Pt }>;
   /** Where each conduit's caption goes: the mean of the middles of its links. */
   conduitMarks: { id: string; label: string; x: number; y: number }[];
   zones: LineInstance[];
@@ -204,10 +231,14 @@ export function createViewContext(content: Content, index: Index, layout: Layout
     ["front-end-processor", 8.5],
   ]);
 
+  const linkById = new Map<string, { a: Pt; b: Pt }>();
+  for (const l of links) linkById.set(l.id, l);
+
   return {
     index,
     layout,
     links,
+    linkById,
     conduitMarks,
     zones,
     blocks,
@@ -382,6 +413,101 @@ const aspectStyle = (aspect: string): { color: Rgba; shape: number; glow: number
   return { color: rgba(NEUTRAL.lampDark, 1), shape: SHAPE.ring, glow: 0 };
 };
 
+const VIEW_SEVERITY: Record<ViewState, number> = { ok: 0, spoofed: 1, frozen: 2, blank: 3 };
+
+/** The machines whose screens are the operators' picture of the line. */
+const SUPERVISORY_KINDS: readonly NodeKind[] = ["hmi", "scada-server"];
+
+/**
+ * The state of the operators' feed: the worst view state among the supervisory machines.
+ * Read off the world every time; nothing about it is stored anywhere else.
+ */
+export function reportingState(world: World): ViewState {
+  let worst: ViewState = "ok";
+  for (const node of world.nodes) {
+    if (!SUPERVISORY_KINDS.includes(node.kind)) continue;
+    if (VIEW_SEVERITY[node.view] > VIEW_SEVERITY[worst]) worst = node.view;
+  }
+  return worst;
+}
+
+/** What the drawn trains and sections are read from. */
+interface Picture {
+  occupancy: Uint8Array;
+  trains: readonly TrainState[];
+  /** True when the trains stand where an earlier snapshot left them: no interpolation, drawn dim. */
+  stale: boolean;
+  /** True when the feed says nothing at all: sections are drawn unlit. */
+  unknown: boolean;
+}
+
+/**
+ * Picks the picture to draw. Ground truth, and an operator view with a healthy feed, read
+ * the world. A spoofed feed shows an all-clear with no trains; a frozen one shows the last
+ * good snapshot, dimmed; a blank one (or a frozen one with no snapshot to show) shows
+ * nothing. The interlocking and its signals are not part of this: they read their own
+ * protected inputs, so signals and set routes are drawn from the world in every mode.
+ */
+function pictureOf(
+  world: World,
+  graph: Index["rail"]["graph"],
+  mode: ViewMode,
+  reporting: ViewState,
+  lastGood: World | undefined,
+): Picture {
+  if (mode === "ground-truth" || reporting === "ok") {
+    return {
+      occupancy: computeOccupancy(world, graph),
+      trains: world.trains,
+      stale: false,
+      unknown: false,
+    };
+  }
+  if (reporting === "spoofed") {
+    return {
+      occupancy: new Uint8Array(graph.sections.length).fill(FREE),
+      trains: [],
+      stale: false,
+      unknown: false,
+    };
+  }
+  if (reporting === "frozen" && lastGood !== undefined && lastGood.tick <= world.tick) {
+    return {
+      occupancy: computeOccupancy(lastGood, graph),
+      trains: lastGood.trains,
+      stale: true,
+      unknown: false,
+    };
+  }
+  return {
+    occupancy: new Uint8Array(graph.sections.length),
+    trains: [],
+    stale: false,
+    unknown: true,
+  };
+}
+
+/** A lit line over each link an alert has just touched, in the detection hue. */
+function alertLines(ctx: ViewContext, alerts: readonly AlertLevel[]): LineInstance[] {
+  const out: LineInstance[] = [];
+  for (const alert of alerts) {
+    const at = ctx.linkById.get(alert.link);
+    if (at === undefined || alert.level <= 0) continue;
+    const level = Math.min(1, alert.level);
+    out.push({
+      x0: at.a.x,
+      y0: at.a.y,
+      x1: at.b.x,
+      y1: at.b.y,
+      width: 3 + 3 * level,
+      glow: 12 * level,
+      dash: 0,
+      color: rgba(ALERT_COLORS.detection, 0.2 + 0.8 * level),
+    });
+  }
+  return out;
+}
+
 /**
  * Turns a World snapshot into draw data. Pure: the same snapshot and options
  * always give a deeply equal result, and the world is never written to.
@@ -394,7 +520,10 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
   const phase = (opts.prev?.tick ?? world.tick) + alpha;
   const pulse = 0.5 + 0.5 * Math.sin((phase * Math.PI * 2) / 24);
 
-  const occupancy = computeOccupancy(world, graph);
+  const mode = opts.mode ?? "ground-truth";
+  const reporting = reportingState(world);
+  const picture = pictureOf(world, graph, mode, reporting, opts.lastGood);
+  const { occupancy } = picture;
   const aspects = deriveAspects(world, index);
 
   const links: LineInstance[] = ctx.links.flatMap((link) =>
@@ -410,9 +539,10 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
   const track: LineInstance[] = [];
   for (const block of ctx.drawBlocks) {
     const state = occupancy[block.section];
-    const color =
-      state === OCCUPIED
-        ? rgba(NEUTRAL.trackOccupied, 1)
+    const color = picture.unknown
+      ? rgba(NEUTRAL.link, 1)
+      : state === OCCUPIED
+        ? rgba(NEUTRAL.trackOccupied, picture.stale ? 0.55 : 1)
         : state === DISTURBED
           ? rgba(ALERT_COLORS.degraded, 1)
           : rgba(NEUTRAL.track, 1);
@@ -442,12 +572,14 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
   for (const t of opts.prev?.trains ?? []) prevById.set(t.id, t);
   const trains: LineInstance[] = [];
   let standing = 0;
-  for (const train of world.trains) {
-    if (train.speedDmPerTick === 0) standing++;
-    const before = prevById.get(train.id);
+  for (const train of world.trains) if (train.speedDmPerTick === 0) standing++;
+  for (const train of picture.trains) {
+    // A frozen console does not move: its trains are drawn where the snapshot left them.
+    const before = picture.stale ? undefined : prevById.get(train.id);
     const posDm = before ? before.posDm + (train.posDm - before.posDm) * alpha : train.posDm;
     const drawn = trainLine(ctx, train, posDm);
-    if (drawn) trains.push(drawn);
+    if (!drawn) continue;
+    trains.push(picture.stale ? { ...drawn, glow: 0, color: rgba(NEUTRAL.train, 0.5) } : drawn);
   }
 
   let atStop = 0;
@@ -528,6 +660,10 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
     nodes,
     defenses: guards.glyphs,
     defenseArrows: guards.arrows,
+    alerts: alertLines(ctx, opts.alerts ?? []),
+    mode,
+    reporting,
+    trainsShown: trains.length,
     stats: {
       trains: world.trains.length,
       trainsStanding: standing,

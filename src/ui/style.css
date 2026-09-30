@@ -675,3 +675,39 @@ button.plain:disabled {
     min-height: 220px;
   }
 }
+
+/* The ground truth / operator view switch floats over the top left of the map. */
+.view-switch {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  max-width: min(420px, 60%);
+}
+
+.fallback:not([hidden]) ~ .view-switch {
+  display: none;
+}
+
+.view-switch .segmented {
+  margin: 0 0 4px;
+}
+
+.view-switch .segmented button {
+  background: rgba(11, 15, 21, 0.86);
+}
+
+.view-switch .segmented button[aria-pressed="true"] {
+  border-color: var(--text);
+  color: #ffffff;
+}
+
+.view-note {
+  margin: 0;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: rgba(11, 15, 21, 0.78);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
