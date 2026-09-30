@@ -67,6 +67,8 @@ export function createFreeText(doc: Document, deps: FreeTextDeps): void {
   const run = need<HTMLButtonElement>(doc, "freetext-run");
   let current: MapResult | undefined;
   let pending = false;
+  /** Bumped on every edit of the box, so an answer for text that is gone can be told apart. */
+  let edits = 0;
 
   input.maxLength = MAX_TEXT_LENGTH;
 
@@ -82,12 +84,14 @@ export function createFreeText(doc: Document, deps: FreeTextDeps): void {
     pending = true;
     interpret.disabled = true;
     setText(note, "Interpreting...");
+    const asked = edits;
     try {
       const result = await deps.mapper.map(input.value, deps.ctx);
-      show(result, sourceLine(result));
+      // The box was edited while the mapper worked: this answer is for text no longer shown.
+      if (asked === edits) show(result, sourceLine(result));
     } catch {
       // A mapper is meant to fall back itself; if one throws anyway, nothing runs.
-      show(undefined, "The text could not be interpreted.");
+      if (asked === edits) show(undefined, "The text could not be interpreted.");
     } finally {
       pending = false;
       interpret.disabled = false;
@@ -100,7 +104,8 @@ export function createFreeText(doc: Document, deps: FreeTextDeps): void {
   });
   // Edited text is no longer what the chips say, so the chips go.
   input.addEventListener("input", () => {
-    if (current !== undefined) show(undefined, "");
+    edits++;
+    if (current !== undefined || pending) show(undefined, "");
   });
   run.addEventListener("click", () => {
     const action = current === undefined ? undefined : runAction(current);
