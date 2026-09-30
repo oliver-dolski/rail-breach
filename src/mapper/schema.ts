@@ -58,11 +58,16 @@ function checkTarget(
  * technique ids or of {technique, target} objects and keeps only what the closed catalogue
  * allows: an id that is not a current or pre-v19 technique is dropped, a pre-v19 id becomes
  * the current one, a target that names nothing real (or nothing the technique can be aimed
- * at) is dropped while the step stays, repeats are dropped, order is kept, and no more than
- * MAX_INTENTS survive. Extra keys are never copied. Anything that is not a list yields an
- * empty result, so a malformed reply can only ever do nothing.
+ * at) is dropped while the step stays, repeats are dropped (unless the caller has its own
+ * reason to keep them, as the keyword matcher does for a technique named in a later step),
+ * order is kept, and no more than MAX_INTENTS survive. Extra keys are never copied. Anything
+ * that is not a list yields an empty result, so a malformed reply can only ever do nothing.
  */
-export function validateIntents(raw: unknown, ctx: MapperContext): Validated {
+export function validateIntents(
+  raw: unknown,
+  ctx: MapperContext,
+  options: { keepRepeats?: boolean } = {},
+): Validated {
   const dropped: string[] = [];
   if (!Array.isArray(raw)) return { intents: [], dropped: ["not a list"] };
   const intents: Intent[] = [];
@@ -85,7 +90,7 @@ export function validateIntents(raw: unknown, ctx: MapperContext): Validated {
     }
     const target = checkTarget(candidate.target, technique, ctx, dropped);
     const key = `${technique.id}|${target === undefined ? "" : JSON.stringify(target)}`;
-    if (seen.has(key)) {
+    if (seen.has(key) && options.keepRepeats !== true) {
       dropped.push(`${technique.id} repeated`);
       continue;
     }

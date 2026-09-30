@@ -3,6 +3,7 @@ import { network } from "../../src/content/network";
 import { techniques } from "../../src/content/techniques";
 import { buildMapperContext } from "../../src/mapper/context";
 import { keywordMapper, mapKeywords, words } from "../../src/mapper/keyword";
+import { MAX_INTENTS } from "../../src/mapper/schema";
 import { SYNONYMS, TARGET_HINTS } from "../../src/mapper/synonyms";
 
 const ctx = buildMapperContext(network, techniques);
@@ -91,6 +92,35 @@ describe("the keyword matcher", () => {
     // A longer synonym still takes the start of a word.
     expect(ids("phishing")).toEqual(["T0865"]);
     expect(ids("enumeration")).toEqual(["T0840"]);
+  });
+
+  it("lists a technique again when a later step names it: the vendor chain reaches T0886 twice", () => {
+    const result = mapKeywords(
+      "vendor vpn, then scan the network, then RDP to the relay, then RDP to the engineering workstation, then disable the safety system",
+      ctx,
+    );
+    expect(result.intents.map((i) => i.technique)).toEqual([
+      "T0822",
+      "T0840",
+      "T0886",
+      "T0886",
+      "T0880",
+    ]);
+    // Each step aims where its own clause says.
+    expect(result.intents[2]?.target).toEqual({ role: "relay" });
+    expect(result.intents[3]?.target).toEqual({ role: "engineering" });
+    expect(ids("phishing then phishing")).toEqual(["T0865", "T0865"]);
+    expect(ids("deny control. Phishing; deny control")).toEqual(["T0813", "T0865", "T0813"]);
+  });
+
+  it("does not count two words for one technique in the same step as a repeat", () => {
+    expect(ids("vendor vpn and remote access")).toEqual(["T0822"]);
+    expect(ids("login with stolen account credentials")).toEqual(["T0859"]);
+  });
+
+  it("keeps repeats inside the step cap", () => {
+    const text = Array.from({ length: 9 }, () => "phishing").join(" then ");
+    expect(ids(text)).toEqual(Array.from({ length: MAX_INTENTS }, () => "T0865"));
   });
 
   it("names the words it ignored", () => {

@@ -153,11 +153,40 @@ function roleFor(
   return undefined;
 }
 
+/**
+ * Words and marks that say "and after that". What follows starts a new step, so a technique
+ * named again in it is a repeat the viewer meant ("RDP to the jump host, then RDP to the
+ * engineering workstation"), where the same technique named twice in one breath ("vpn and
+ * remote access") is one step.
+ */
+const SEQUENCE = /[;\n]|\.(?=\s|$)|\b(?:then|next|afterwards?|after that|followed by)\b/i;
+
+/** One stretch of text between sequence words, with its own filler-free words. */
+interface Clause {
+  tokens: string[];
+  typed: Typed;
+  /** Index of the clause's first content word among all the text's content words. */
+  offset: number;
+}
+
+function clausesOf(text: string): Clause[] {
+  const clauses: Clause[] = [];
+  let offset = 0;
+  for (const part of text.slice(0, MAX_TEXT_LENGTH).split(SEQUENCE)) {
+    const all = tokenize(part);
+    const tokens = all.filter((t) => !t.filler).map((t) => t.word);
+    if (tokens.length === 0) continue;
+    let n = 0;
+    const typed: Typed = all.map((token) => ({ token, content: token.filler ? -1 : n++ }));
+    clauses.push({ tokens, typed, offset });
+    offset += tokens.length;
+  }
+  return clauses;
+}
+
 export function mapKeywords(text: string, ctx: MapperContext): MapResult {
-  const all = tokenize(text);
-  const tokens = all.filter((t) => !t.filler).map((t) => t.word);
-  let seen = 0;
-  const typed: Typed = all.map((token) => ({ token, content: token.filler ? -1 : seen++ }));
+  const clauses = clausesOf(text);
+  const tokens = clauses.flatMap((c) => c.tokens);
   if (tokens.length === 0) {
     return {
       intents: [],
@@ -169,45 +198,61 @@ export function mapKeywords(text: string, ctx: MapperContext): MapResult {
   const mark = (covers: readonly number[]): void => {
     for (const i of covers) consumed.add(i);
   };
+  /** Where `phrase` stands in the clause, counted among all the text's words. */
+  const within = (phrase: Phrase, clause: Clause): Found | undefined => {
+    const found = locate(phrase, clause.tokens, clause.typed);
+    if (found === undefined) return undefined;
+    return { at: found.at + clause.offset, covers: found.covers.map((c) => c + clause.offset) };
+  };
 
-  const hits: { technique: TechniqueEntry; at: number }[] = [];
+  // A technique is one step for every clause that names it, and its place is its first mention there.
+  const hits: { technique: TechniqueEntry; at: number; clause: number }[] = [];
   for (const technique of ctx.techniques) {
-    let first = -1;
-    tokens.forEach((token, i) => {
-      if (!ID_WORD.test(token)) return;
-      const upper = token.toUpperCase();
-      if (technique.id.toUpperCase() !== upper && technique.legacyId !== upper) return;
-      mark([i]);
-      if (first === -1 || i < first) first = i;
+    clauses.forEach((clause, ci) => {
+      let first = -1;
+      clause.tokens.forEach((token, i) => {
+        if (!ID_WORD.test(token)) return;
+        const upper = token.toUpperCase();
+        if (technique.id.toUpperCase() !== upper && technique.legacyId !== upper) return;
+        mark([clause.offset + i]);
+        if (first === -1 || clause.offset + i < first) first = clause.offset + i;
+      });
+      for (const phrase of phrases(SYNONYMS[technique.id] ?? [])) {
+        const found = within(phrase, clause);
+        if (found === undefined) continue;
+        mark(found.covers);
+        if (first === -1 || found.at < first) first = found.at;
+      }
+      if (first !== -1) hits.push({ technique, at: first, clause: ci });
     });
-    for (const phrase of phrases(SYNONYMS[technique.id] ?? [])) {
-      const found = locate(phrase, tokens, typed);
-      if (found === undefined) continue;
-      mark(found.covers);
-      if (first === -1 || found.at < first) first = found.at;
-    }
-    if (first !== -1) hits.push({ technique, at: first });
   }
   hits.sort((a, b) => a.at - b.at);
 
-  const hinted: { hint: string; at: number }[] = [];
+  const hinted: { hint: string; at: number; clause: number }[] = [];
   for (const hint of Object.keys(TARGET_HINTS)) {
     for (const phrase of phrases([hint])) {
-      const found = locate(phrase, tokens, typed);
-      if (found === undefined) continue;
-      mark(found.covers);
-      hinted.push({ hint, at: found.at });
+      clauses.forEach((clause, ci) => {
+        const found = within(phrase, clause);
+        if (found === undefined) return;
+        mark(found.covers);
+        hinted.push({ hint, at: found.at, clause: ci });
+      });
     }
   }
-  const hints = hinted.sort((a, b) => a.at - b.at).map((h) => h.hint);
+  hinted.sort((a, b) => a.at - b.at);
 
-  const raw: Intent[] = hits.map(({ technique }) => {
-    const role = roleFor(technique, hints, ctx);
+  const raw: Intent[] = hits.map(({ technique, clause }) => {
+    // The places named in the step's own clause come first, then the rest of the text.
+    const near = [
+      ...hinted.filter((h) => h.clause === clause),
+      ...hinted.filter((h) => h.clause !== clause),
+    ].map((h) => h.hint);
+    const role = roleFor(technique, near, ctx);
     return role === undefined
       ? { technique: technique.id }
       : { technique: technique.id, target: { role } };
   });
-  const { intents } = validateIntents(raw, ctx);
+  const { intents } = validateIntents(raw, ctx, { keepRepeats: true });
 
   const unmatched = tokens
     .filter((_, i) => !consumed.has(i))
