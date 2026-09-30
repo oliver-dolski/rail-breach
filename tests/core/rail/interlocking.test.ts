@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { network } from "../../../src/content/network";
 import { deriveRailInputs, neutralInputs } from "../../../src/core/rail/inputs";
 import { deriveAspect, stepInterlocking } from "../../../src/core/rail/interlocking";
 import type { Action } from "../../../src/core/sim/actions";
@@ -99,6 +100,96 @@ describe("deriveAspect", () => {
     stepInterlocking(world, index, [], down);
     stepInterlocking(world, index, [], neutralInputs(world));
     expect(deriveAspect(signal(index, "S-A"), world, index)).toBe("proceed");
+  });
+});
+
+describe("a lost command channel", () => {
+  it("puts the signals of routes that are set but not yet entered to stop on the next tick", () => {
+    const { world, index } = fresh();
+    world.interlockings[0]?.locks.push(
+      { route: "R-A", used: false },
+      { route: "R-B", used: false },
+    );
+    expect(deriveAspect(signal(index, "S-A"), world, index)).toBe("proceed");
+    expect(deriveAspect(signal(index, "S-B"), world, index)).toBe("proceed");
+
+    node(world, "il-1-ctl").cmdBlocked = true;
+    const next = step(world, [], index).world;
+
+    expect(deriveAspect(signal(index, "S-A"), next, index)).toBe("stop");
+    expect(deriveAspect(signal(index, "S-B"), next, index)).toBe("stop");
+    // The routes stay locked: only the aspect is restricted, nothing is released.
+    expect(next.interlockings[0]?.locks.map((l) => l.route)).toEqual(["R-A", "R-B"]);
+  });
+
+  it("leaves a route a train has already entered as it is", () => {
+    const { world, index } = fresh();
+    let current = world;
+    const entered = (w: World) => w.interlockings[0]?.locks.find((l) => l.route === "R-A")?.used;
+    while (entered(current) !== true) current = run(current, index, 1).world;
+    expect(current.trains[0]?.sig).toBe(1);
+
+    node(current, "il-1-ctl").cmdBlocked = true;
+    const speedBefore = current.trains[0]?.speedDmPerTick ?? 0;
+    const { world: end, events } = run(current, index, 20);
+
+    expect(end.interlockings[0]?.locks.some((l) => l.route === "R-A")).toBe(true);
+    expect(events.some((e) => e.k === "route.released")).toBe(false);
+    expect(events.some((e) => e.k === "train.stopped" || e.k === "train.overran")).toBe(false);
+    expect(end.trains[0]?.speedDmPerTick ?? 0).toBeGreaterThanOrEqual(speedBefore);
+  });
+
+  it("does not let a signal promise a route that a blocked interlocking cannot offer", () => {
+    const { world, index } = fresh();
+    world.interlockings[0]?.locks.push({ route: "R-A", used: false });
+    const il = world.interlockings[0];
+    if (il) il.cmdBlocked = true;
+    expect(deriveAspect(signal(index, "S-A"), world, index)).toBe("stop");
+  });
+
+  it("makes the signal behind it warn of a stop when the next interlocking lost its channel", () => {
+    const index = buildIndex(network);
+    const routes = index.rail.routes.routes.filter(
+      (r) => r.endSignal !== undefined && r.endSignal.interlocking !== r.il,
+    );
+    expect(routes.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const route of routes) {
+      const end = route.endSignal;
+      const next = index.rail.routes.routes.find((r) => r.entry.id === end?.id);
+      if (end === undefined || next === undefined) continue;
+      const world = createWorld(network, SEED);
+      for (const il of world.interlockings) {
+        if (il.id === route.il) il.locks.push({ route: route.def.id, used: false });
+        if (il.id === next.il) il.locks.push({ route: next.def.id, used: false });
+      }
+      if (deriveAspect(route.entry, world, index) !== "proceed") continue;
+      const far = world.interlockings.find((i) => i.id === next.il);
+      if (far) far.cmdBlocked = true;
+      expect(deriveAspect(route.entry, world, index), route.def.id).toBe("caution");
+      expect(deriveAspect(end, world, index), route.def.id).toBe("stop");
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("brings a train that is approaching a set route to a halt before the signal", () => {
+    const { world, index } = fresh();
+    let current = world;
+    let peak = 0;
+    // Run until the dispatch layer has set R-A and the train is on its way to S-A.
+    while (!current.interlockings[0]?.locks.some((l) => l.route === "R-A")) {
+      current = run(current, index, 1).world;
+    }
+    expect(current.trains[0]?.sig).toBe(0);
+    node(current, "il-1-ctl").cmdBlocked = true;
+    const { world: end, events } = run(current, index, 1500, {}, (w) => {
+      peak = Math.max(peak, w.trains[0]?.posDm ?? 0);
+    });
+    expect(peak).toBeLessThanOrEqual(signal(index, "S-A").atDm);
+    expect(end.trains[0]?.speedDmPerTick).toBe(0);
+    expect(events.some((e) => e.k === "train.stopped" && e.signal === "S-A")).toBe(true);
+    expect(events.some((e) => e.k === "train.overran")).toBe(false);
   });
 });
 

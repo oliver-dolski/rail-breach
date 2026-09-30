@@ -64,6 +64,18 @@ function baseline(seed: number) {
   return cached;
 }
 
+/**
+ * A lost command channel withdraws the proceed aspect of routes that are set
+ * but not yet entered. A train already inside its braking distance of such a
+ * signal cannot stop short of it and is brought to a stand inside the overlap,
+ * which is an overrun event. That can happen once per train on the line at the
+ * moment the channel goes (a train that has overrun then waits out the window),
+ * and never beyond the overlap: the invariant is asserted on every tick.
+ */
+function overrunAllowance(seed: number): number {
+  return baseline(seed).overruns + warmWorld(seed).trains.length;
+}
+
 const CYBER_FIELDS = ["integrity", "discovered", "cmdBlocked", "controlDenied"] as const;
 
 /** The attacked world may differ from the original only by monotone changes of the cyber fields. */
@@ -166,7 +178,9 @@ describe("no effect, on any node, at any seed, makes the railway more permissive
           // Steps with the safety invariant asserted on every tick; a violation throws.
           const later = advance(attacked, OBSERVE_TICKS);
           const overruns = later.events.filter((e) => e.k === "train.overran").length;
-          expect(overruns, `${id} seed ${seed}`).toBeLessThanOrEqual(baseline(seed).overruns);
+          expect(overruns, `${id} seed ${seed}`).toBeLessThanOrEqual(
+            effect.k === "blockCommands" ? overrunAllowance(seed) : baseline(seed).overruns,
+          );
         }
       }
     });
@@ -183,7 +197,7 @@ describe("no effect, on any node, at any seed, makes the railway more permissive
       // Every route request is refused, so nothing new is ever locked: trains only queue.
       expect(later.events.filter((e) => e.k === "route.set")).toEqual([]);
       expect(later.events.filter((e) => e.k === "train.overran").length).toBeLessThanOrEqual(
-        baseline(seed).overruns,
+        overrunAllowance(seed),
       );
     }
   });

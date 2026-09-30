@@ -18,8 +18,13 @@ function interlockingOf(world: World, id: string): InterlockingState | undefined
   return world.interlockings.find((i) => i.id === id);
 }
 
-/** True when this interlocking holds a route entered at `signalId`. */
+/**
+ * True when this interlocking holds a route entered at `signalId` that it can
+ * still offer: a route no train has entered yet is withdrawn from the signal
+ * while the command channel is lost (see deriveAspect).
+ */
 function holdsRouteAt(index: Index, il: InterlockingState, signalId: string): boolean {
+  if (il.cmdBlocked) return false;
   return il.locks.some((l) => index.rail.routes.byId.get(l.route)?.entry.id === signalId);
 }
 
@@ -28,7 +33,8 @@ function holdsRouteAt(index: Index, il: InterlockingState, signalId: string): bo
  * stored, so there is no stale "proceed" for an attack to leave behind.
  *
  *  dark    the interlocking is down or the lamp's controller failed
- *  stop    no locked route, the route is in use, or it is no longer proved
+ *  stop    no locked route, the route is in use, it is no longer proved, or the
+ *          command channel is lost and no train has entered the route yet
  *  caution the route is proved but the next signal is at stop
  *  proceed the route is proved and the next signal also has a route
  */
@@ -45,6 +51,11 @@ export function deriveAspect(
   const { routes } = index.rail;
   const lock = il.locks.find((l) => routes.byId.get(l.route)?.entry.id === signal.id);
   if (!lock || lock.used) return "stop";
+  // Loss of the command channel is a fail-safe condition: a route that is set
+  // but not yet entered no longer shows a proceed aspect. The lock stays as it
+  // is (approach locking still applies) and so does any route a train is
+  // already running through, because that train is past its signal.
+  if (il.cmdBlocked) return "stop";
   const route = routes.byId.get(lock.route);
   if (!route || !routeStillProved(world, route, occ)) return "stop";
 
