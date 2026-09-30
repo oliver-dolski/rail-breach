@@ -3,10 +3,108 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="A live attack on a fictional railway network, driven by MITRE ATT&amp;CK for ICS techniques. Fictional topology, no real infrastructure."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Rail Breach</title>
   </head>
   <body>
-    <div id="app"></div>
+    <noscript>Rail Breach is a live simulation and needs JavaScript.</noscript>
+    <div id="app" class="app">
+      <main id="stage" class="stage">
+        <canvas
+          id="map"
+          class="map"
+          role="img"
+          aria-label="Schematic dispatcher map of a fictional railway: stations, signals, trains and the network an intruder moves through."
+        ></canvas>
+        <div id="labels" class="labels" aria-hidden="true"></div>
+        <figure id="fallback" class="fallback" hidden>
+          <img
+            id="fallback-img"
+            src="/fallback.svg"
+            alt="Schematic dispatcher map of the fictional railway, static view"
+          />
+          <figcaption id="fallback-message"></figcaption>
+        </figure>
+      </main>
+
+      <aside id="panel" class="panel" aria-label="Session">
+        <header class="panel-head">
+          <h1>Rail Breach</h1>
+          <p class="tagline">
+            A live attack on a fictional railway, replayed from a recorded session.
+            Techniques from MITRE ATT&amp;CK for ICS.
+          </p>
+        </header>
+
+        <section class="indicator" aria-live="polite">
+          <div id="indicator-label" class="indicator-label" data-state="checking">
+            safety invariant: checking
+          </div>
+          <div id="indicator-detail" class="indicator-detail"></div>
+        </section>
+
+        <section class="block">
+          <h2>Session</h2>
+          <dl class="kv">
+            <dt>Scenario</dt>
+            <dd id="scenario-title">Phishing to the dispatcher</dd>
+            <dt>Clock</dt>
+            <dd id="clock">00:00</dd>
+            <dt>Trains</dt>
+            <dd id="stat-trains"></dd>
+            <dt>Signals</dt>
+            <dd id="stat-signals"></dd>
+            <dt>Machines</dt>
+            <dd id="stat-nodes"></dd>
+            <dt>Routes</dt>
+            <dd id="stat-routes"></dd>
+          </dl>
+        </section>
+
+        <section class="block">
+          <h2>Attack chain</h2>
+          <div id="chain" class="chain"></div>
+          <p id="caption" class="caption"></p>
+        </section>
+
+        <section class="block">
+          <h2>Latest interlocking refusal</h2>
+          <p id="refusal-text" class="refusal"></p>
+          <p id="refusal-count" class="muted"></p>
+        </section>
+
+        <section class="block grow">
+          <h2>Events</h2>
+          <ul id="log" class="log"></ul>
+        </section>
+
+        <section class="block">
+          <h2>Key</h2>
+          <ul class="legend">
+            <li><i class="glyph g-normal"></i>machine, normal</li>
+            <li><i class="glyph g-compromised"></i>intruder has a foothold</li>
+            <li><i class="glyph g-degraded"></i>degraded</li>
+            <li><i class="glyph g-lost"></i>operators lost control</li>
+            <li><i class="glyph g-stop"></i><i class="glyph g-caution"></i><i class="glyph g-proceed"></i>signal: stop, caution, proceed</li>
+            <li><i class="glyph g-packet"></i>attacker traffic</li>
+          </ul>
+        </section>
+
+        <footer class="panel-foot">
+          Fictional network and railway. Nothing here describes real infrastructure.
+          Whatever the intruder does, the interlocking fails safe: trains stop, they never collide.
+        </footer>
+      </aside>
+    </div>
     <script type="module" src="/src/app/main.ts"></script>
   </body>
 </html>

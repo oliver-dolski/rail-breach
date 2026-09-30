@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img">
+<title>Rail Breach: schematic dispatcher map of a fictional railway (still image)</title>
+<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="1600" height="900" fill="rgb(7 10 14)"/>
+<rect x="20" y="40" width="130" height="180" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="28" y="56" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">INTERNET</text>
+<rect x="190" y="40" width="290" height="250" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="198" y="56" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">CORPORATE IT</text>
+<rect x="20" y="330" width="330" height="150" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="28" y="346" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">VENDOR ACCESS</text>
+<rect x="520" y="90" width="130" height="180" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="528" y="106" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">DMZ</text>
+<rect x="700" y="40" width="360" height="320" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="708" y="56" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">CONTROL CENTRE</text>
+<rect x="380" y="380" width="150" height="130" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="388" y="396" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">IL TAVERSHALL</text>
+<rect x="720" y="380" width="150" height="130" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="728" y="396" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">IL VELMOOR JN</text>
+<rect x="1060" y="380" width="150" height="130" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="1068" y="396" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">IL CRENMOOR</text>
+<rect x="20" y="525" width="1560" height="365" fill="none" stroke="rgb(87 91 96)" stroke-width="1.4" stroke-dasharray="9 7"/>
+<text x="28" y="541" fill="rgb(137 142 148)" font-family="monospace" font-size="11" letter-spacing="1.5">TRACKSIDE</text>
+<line x1="250" y1="105" x2="420" y2="105" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="250" y1="105" x2="420" y2="225" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="250" y1="105" x2="250" y2="225" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="250" y1="225" x2="420" y2="105" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="250" y1="225" x2="420" y2="225" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="80" y1="405" x2="270" y2="405" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="880" y1="190" x2="780" y2="95" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="880" y1="190" x2="990" y2="95" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="880" y1="190" x2="780" y2="295" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="880" y1="190" x2="880" y2="295" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="880" y1="190" x2="780" y2="190" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="490" y1="472" x2="425" y2="430" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="830" y1="472" x2="765" y2="430" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="1170" y1="472" x2="1105" y2="430" stroke="rgb(73 76 80)" stroke-width="1.4"/>
+<line x1="85" y1="130" x2="250" y2="105" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="85" y1="130" x2="80" y2="405" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="420" y1="105" x2="585" y2="180" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="250" y1="225" x2="585" y2="180" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="585" y1="180" x2="780" y2="95" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="585" y1="180" x2="780" y2="295" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="270" y1="405" x2="780" y2="190" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="880" y1="295" x2="425" y2="430" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="880" y1="295" x2="765" y2="430" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="880" y1="295" x2="1105" y2="430" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="780" y1="190" x2="425" y2="430" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="780" y1="190" x2="765" y2="430" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="780" y1="190" x2="1105" y2="430" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="425" y1="430" x2="455" y2="570" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="765" y1="430" x2="795" y2="570" stroke="rgb(73 76 80)" stroke-width="2"/>
+<line x1="1105" y1="430" x2="1135" y2="570" stroke="rgb(73 76 80)" stroke-width="2"/>
+<polyline points="60,710 160,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="160,710 405,710" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="405,710 505,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="505,710 745,710" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="745,710 845,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="845,710 1085,710" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1085,710 1185,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1185,710 1440,710" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1440,710 1540,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1540,650 1440,650" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1440,650 1185,650" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1185,650 1085,650" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1085,650 845,650" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="845,650 745,650" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="745,650 505,650" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="505,650 405,650" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="405,650 160,650" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="160,650 60,650" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="845,710 890,775 940,830 1260,830" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="1260,830 1360,830" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
+<polyline points="845,710 845,650" fill="none" stroke="rgb(102 106 112)" stroke-width="4"/>
+<line x1="628" y1="710" x2="646" y2="710" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
+<line x1="998" y1="650" x2="980" y2="650" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
+<line x1="1165.3" y1="785" x2="1147.3" y2="785" stroke="rgb(244 245 245)" stroke-width="7" stroke-linecap="round" filter="url(#glow)"/>
+<circle cx="160" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="405" cy="724" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
+<circle cx="505" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="745" cy="724" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
+<circle cx="845" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1085" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1185" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1440" cy="724" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1260" cy="844" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1440" cy="636" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1185" cy="636" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1085" cy="636" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
+<circle cx="845" cy="636" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
+<circle cx="745" cy="636" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="505" cy="636" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="405" cy="636" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
+<circle cx="160" cy="636" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="1260" cy="816" r="4.6" fill="rgb(28 227 94)" filter="url(#glow)"/>
+<circle cx="859" cy="650" r="4.6" fill="rgb(246 53 40)" filter="url(#glow)"/>
+<circle cx="85" cy="130" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="85" y="156" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Internet</text>
+<circle cx="250" cy="105" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="250" y="131" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Mail gateway</text>
+<polygon points="420,96.4 428.6,105 420,113.6 411.4,105" fill="rgb(247 69 194)" filter="url(#glow)"/>
+<text x="420" y="131" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Dispatcher WS</text>
+<circle cx="250" cy="225" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="250" y="251" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Directory</text>
+<circle cx="420" cy="225" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="420" y="251" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Office WS</text>
+<circle cx="80" cy="405" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="80" y="431" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Vendor VPN</text>
+<circle cx="270" cy="405" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="270" y="431" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Jump host</text>
+<polygon points="585,171.4 593.6,180 585,188.6 576.4,180" fill="rgb(247 69 194)" filter="url(#glow)"/>
+<text x="585" y="206" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">DMZ relay</text>
+<polygon points="780,86.4 788.6,95 780,103.6 771.4,95" fill="rgb(247 69 194)" filter="url(#glow)"/>
+<text x="780" y="121" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Console 1</text>
+<circle cx="990" cy="95" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="990" y="121" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Console 2</text>
+<g stroke="rgb(169 104 243)" stroke-width="6" stroke-linecap="round" filter="url(#glow)"><line x1="870.5" y1="180.5" x2="889.5" y2="199.5"/><line x1="870.5" y1="199.5" x2="889.5" y2="180.5"/></g>
+<text x="880" y="216" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Traffic mgmt</text>
+<circle cx="780" cy="190" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="780" y="216" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Engineering WS</text>
+<circle cx="780" cy="295" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="780" y="321" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Historian</text>
+<circle cx="880" cy="295" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="880" y="321" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Front-end proc.</text>
+<circle cx="425" cy="430" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="425" y="456" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">IL-TAV</text>
+<circle cx="490" cy="472" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="490" y="498" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Maint. WS</text>
+<circle cx="765" cy="430" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="765" y="456" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">IL-VEL</text>
+<circle cx="830" cy="472" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="830" y="498" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Maint. WS</text>
+<circle cx="1105" cy="430" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="1105" y="456" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">IL-CRE</text>
+<circle cx="1170" cy="472" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="1170" y="498" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">Maint. WS</text>
+<circle cx="455" cy="570" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="455" y="596" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">OC-TAV</text>
+<circle cx="795" cy="570" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="795" y="596" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">OC-VEL</text>
+<circle cx="1135" cy="570" r="5.4" fill="none" stroke="rgb(196 198 202)" stroke-width="3.8"/>
+<text x="1135" y="596" fill="rgb(164 168 173)" font-family="monospace" font-size="10.5" text-anchor="middle">OC-CRE</text>
+<text x="110" y="748" fill="rgb(164 168 173)" font-family="monospace" font-size="12" text-anchor="middle">Harkwell</text>
+<text x="455" y="748" fill="rgb(164 168 173)" font-family="monospace" font-size="12" text-anchor="middle">Tavershall</text>
+<text x="795" y="748" fill="rgb(164 168 173)" font-family="monospace" font-size="12" text-anchor="middle">Velmoor Junction</text>
+<text x="1135" y="748" fill="rgb(164 168 173)" font-family="monospace" font-size="12" text-anchor="middle">Crenmoor</text>
+<text x="1490" y="748" fill="rgb(164 168 173)" font-family="monospace" font-size="12" text-anchor="middle">Dunmarrow</text>
+<text x="1310" y="866" fill="rgb(164 168 173)" font-family="monospace" font-size="12" text-anchor="middle">Pellthorne</text>
+<text x="24" y="886" fill="rgb(137 142 148)" font-family="monospace" font-size="12">Still image. Fictional network and railway. A phishing chain reaches the traffic management server; the interlockings refuse new routes and trains stop at red signals.</text>
+</svg>
