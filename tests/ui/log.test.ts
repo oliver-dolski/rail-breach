@@ -149,7 +149,13 @@ describe("the log for the recorded show", () => {
   });
 
   it("is short: the many ordinary refusals do not reach it", () => {
-    expect(events.filter((e) => e.k === "command.rejected").length).toBeGreaterThan(50);
+    // 19 refusals at the recorded start; most are a train's dispatch request being retried.
+    const refusals = events.filter((e) => e.k === "command.rejected").length;
+    expect(refusals).toBeGreaterThan(10);
+    const told = text.filter((line) => /refuses routes/.test(line));
+    expect(told.length).toBeGreaterThan(0);
+    expect(told.length).toBeLessThan(refusals);
+    expect(told.length).toBeLessThanOrEqual(3); // once per interlocking
     expect(log.entries().length).toBeLessThan(40);
   });
 

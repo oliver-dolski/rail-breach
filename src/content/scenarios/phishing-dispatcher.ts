@@ -37,23 +37,26 @@ const launch = (t: number, technique: string, target: string): TimedAction => ({
  * The seed is chosen so every roll in the chain goes the attacker's way; a
  * test pins that, so a change to the engine cannot silently break the story.
  * Each action launches two ticks after the previous operation finished, so the
- * whole chain takes 19 seconds at normal speed. It starts at tick 7362 because
- * that is the start in the timetable where the first train held by the lost
- * command channel stops soonest: service braking is 1 m/s^2, so a train at line
- * speed needs about half a minute to stand, and no start gets a halt that the
- * attack caused sooner than 48 seconds after the first packet. A test pins it.
+ * whole chain takes 18 seconds at normal speed. When the chain lands the
+ * interlockings put every route that is set but not yet entered to stop, so
+ * signals drop at that moment. It starts at tick 30631 because that is the
+ * start in the timetable where, with nothing already held and no train
+ * overrunning, the first train the lost command channel stops comes soonest:
+ * about 32 seconds after the first packet. Service braking is 1 m/s^2, so a
+ * train at line speed needs about half a minute to stand, and that is the
+ * floor. A test pins it.
  */
 export const phishingDispatcher: Scenario = {
   id: "phishing-dispatcher",
   title: "Phishing to the dispatcher",
   seed: 6,
-  startTick: 7352,
-  durationTicks: 8600,
+  startTick: 30631,
+  durationTicks: 31900,
   actions: [
-    launch(7362, "T0865", "corp-ws-dispatch"),
-    launch(7404, "T0840", "corp-ws-dispatch"),
-    launch(7433, "T0886", "dmz-relay"),
-    launch(7472, "T0886", "dispatch-hmi-1"),
-    launch(7509, "T0886", "tms-server"),
+    launch(30641, "T0865", "corp-ws-dispatch"),
+    launch(30681, "T0840", "corp-ws-dispatch"),
+    launch(30707, "T0886", "dmz-relay"),
+    launch(30747, "T0886", "dispatch-hmi-1"),
+    launch(30783, "T0886", "tms-server"),
   ],
 };

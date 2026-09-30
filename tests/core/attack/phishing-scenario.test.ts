@@ -133,7 +133,7 @@ describe("T0886 Remote Services", () => {
 });
 
 describe("the phishing chain end to end", () => {
-  const ATTACK_LANDS = 7553; // tick the last technique succeeds, pinned by the recorded seed
+  const ATTACK_LANDS = 30819; // tick the last technique succeeds, pinned by the recorded seed
   const attacked = run(warm(), index, scenario.actions, scenario.durationTicks);
 
   it("succeeds at every step with the recorded seed, in order", () => {
@@ -193,36 +193,66 @@ describe("the phishing chain end to end", () => {
     }
   });
 
-  it("shows the first packet within a second of the start and lands the chain within 20 seconds", () => {
+  it("shows the first packet within a second of the start and lands the chain within 18 seconds", () => {
     const packets = kinds(attacked.events, "packet");
     const firstPacket = packets[0]?.tick ?? 0;
     expect(firstPacket - scenario.startTick).toBeLessThanOrEqual(SECOND);
-    expect(ATTACK_LANDS - firstPacket).toBeLessThanOrEqual(20 * SECOND);
+    expect(ATTACK_LANDS - firstPacket).toBeLessThanOrEqual(18 * SECOND);
   });
 
-  it("holds a train that the quiet railway lets through, within 50 seconds of the first packet", () => {
+  it("drops every open signal to stop the moment the chain lands, and only because of it", () => {
+    const open = (aspect: string) => aspect === "proceed" || aspect === "caution";
+    const before = deriveAspects(
+      run(warm(), index, scenario.actions, ATTACK_LANDS - 1).world,
+      index,
+    );
+    const after = deriveAspects(run(warm(), index, scenario.actions, ATTACK_LANDS).world, index);
+    const calm = deriveAspects(run(warm(), index, [], ATTACK_LANDS).world, index);
+    const dropped = index.rail.graph.signals.filter(
+      (_, i) => open(before[i] ?? "") && after[i] === "stop" && open(calm[i] ?? ""),
+    );
+    // Three of the three signals that were open, measured at the recorded start.
+    expect(dropped.length).toBeGreaterThanOrEqual(3);
+    const events = kinds(attacked.events, "signal.aspect").filter((e) => e.tick === ATTACK_LANDS);
+    expect(events.filter((e) => e.aspect === "stop").length).toBeGreaterThanOrEqual(3);
+    // The quiet railway changes none of them on that tick.
+    const calmEvents = kinds(run(warm(), index, [], ATTACK_LANDS).events, "signal.aspect");
+    expect(calmEvents.filter((e) => e.tick === ATTACK_LANDS)).toEqual([]);
+  });
+
+  it("holds a train that the quiet railway lets through, within 33 seconds of the first packet", () => {
     // Braking is 1 m/s^2, so this is how soon the lost command channel can stop a train at
     // all; the start tick of the scenario is the one where it is soonest. A halt counts only
-    // when it is the attack's doing: the train still stands 25 seconds later while on the
-    // quiet railway the same train has moved on.
+    // when it is the attack's doing: the train was moving when the chain landed, it still
+    // stands 25 seconds later while on the quiet railway the same train has moved on, and
+    // the quiet railway never stands it in between.
     const firstPacket = kinds(attacked.events, "packet")[0]?.tick ?? 0;
+    const speedAt = (actions: typeof scenario.actions, tick: number, id: string) =>
+      run(warm(), index, actions, tick).world.trains.find((t) => t.id === id);
     const halts = kinds(attacked.events, "train.stopped").filter(
       (e) => e.cause === "signal" && e.tick > ATTACK_LANDS,
     );
     const caused = halts.find((e) => {
       const later = e.tick + 250;
-      const held = run(warm(), index, scenario.actions, later).world.trains.find(
-        (t) => t.id === e.train,
-      );
-      const free = run(warm(), index, [], later).world.trains.find((t) => t.id === e.train);
+      const moving = speedAt(scenario.actions, ATTACK_LANDS - 1, e.train);
+      const held = speedAt(scenario.actions, later, e.train);
+      const free = speedAt([], later, e.train);
+      const freeAtHalt = speedAt([], e.tick, e.train);
       return (
+        moving !== undefined &&
+        moving.speedDmPerTick > 0 &&
         held !== undefined &&
         held.speedDmPerTick === 0 &&
+        freeAtHalt?.speedDmPerTick !== 0 &&
         (free === undefined || free.posDm > held.posDm + 300)
       );
     });
     if (caused === undefined) throw new Error("the attack held no train");
-    expect(caused.tick - firstPacket).toBeLessThanOrEqual(50 * SECOND);
+    expect(caused.tick - firstPacket).toBeLessThanOrEqual(33 * SECOND);
+  });
+
+  it("puts no train past a signal: the signals that drop are far enough ahead of the trains", () => {
+    expect(kinds(attacked.events, "train.overran")).toEqual([]);
   });
 
   it("is the attack that stopped them: the same railway keeps running without it", () => {
