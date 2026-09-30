@@ -1,4 +1,5 @@
 import { stepOps } from "../attack/ops";
+import { stepDetect } from "../detect/ids";
 import { stepCtc, stepTimetable } from "../rail/ctc";
 import { deriveRailInputs } from "../rail/inputs";
 import { deriveAspects, stepInterlocking } from "../rail/interlocking";
@@ -40,6 +41,7 @@ export function step(world: World, dueActions: readonly Action[], index?: Index)
 
   if (index !== undefined) {
     stepOps(next, index, events);
+    stepDetect(next, index, events);
     const inputs = deriveRailInputs(next, index);
     stepInterlocking(next, index, events, inputs);
     stepTimetable(next, index, events);

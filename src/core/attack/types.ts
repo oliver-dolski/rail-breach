@@ -88,6 +88,12 @@ export interface TechniqueDef {
   /** Base success chance before the target's resistance is applied. Permille. */
   successPermille: number;
   resistance: Resistance;
+  /**
+   * How loud the technique is on the wire: the chance, in permille, that one hop of it is
+   * noticed by a sensor that sees the whole link. A technique that runs on one node and
+   * sends nothing has no hop to notice and says 0.
+   */
+  signaturePermille: number;
   effects: Effect[];
   /** One sentence for the log and tooltips. */
   explain: string;

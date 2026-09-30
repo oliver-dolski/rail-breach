@@ -222,7 +222,10 @@ export const links: LinkDef[] = [
   link("l-dc-dispatch", "corp-dc", "corp-ws-dispatch", ["directory"], 2),
   link("l-dc-office", "corp-dc", "corp-ws-office", ["directory"], 2),
   // Vendor access
-  link("l-vpn-jump", "vpn-gw", "vendor-jump", ["remote-services"], 2),
+  {
+    ...link("l-vpn-jump", "vpn-gw", "vendor-jump", ["remote-services"], 2),
+    visibilityPermille: 250,
+  },
   // Control centre. The consoles are thin clients that open a remote display
   // session on the traffic management server, hence remote-services next to
   // the supervisory protocol.
@@ -237,7 +240,11 @@ export const links: LinkDef[] = [
   link("l-mws-cre", "mws-cre", "il-cre", ["maintenance"], 2),
   // Across zones
   link("l-net-mail", "internet", "corp-mail", ["smtp"], 5, "c-net-corp"),
-  link("l-net-vpn", "internet", "vpn-gw", ["vpn"], 5, "c-net-vendor"),
+  // The vendor tunnel is encrypted: a sensor on it reads little of what crosses.
+  {
+    ...link("l-net-vpn", "internet", "vpn-gw", ["vpn"], 5, "c-net-vendor"),
+    visibilityPermille: 250,
+  },
   link("l-dispatch-dmz", "corp-ws-dispatch", "dmz-relay", ["remote-services"], 4, "c-corp-dmz"),
   link("l-dc-dmz", "corp-dc", "dmz-relay", ["patch"], 4, "c-corp-dmz"),
   link("l-dmz-hmi1", "dmz-relay", "dispatch-hmi-1", ["remote-services"], 3, "c-dmz-ctrl"),

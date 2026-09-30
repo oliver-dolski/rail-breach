@@ -1,6 +1,7 @@
 import type { AttractSession } from "../../app/session";
 import type { RenderView } from "../../render/view";
 import { setText, syncList } from "../dom";
+import { timeToDetect } from "./detect";
 import { readInvariant, renderIndicator, renderRefusal } from "./indicator";
 import { type EventLog, formatClock } from "./log";
 
@@ -31,6 +32,7 @@ export function createPanel(doc: Document): Panel {
     signals: need(doc, "stat-signals"),
     nodes: need(doc, "stat-nodes"),
     routes: need(doc, "stat-routes"),
+    detect: need(doc, "stat-detect"),
   };
 
   return {
@@ -49,6 +51,7 @@ export function createPanel(doc: Document): Panel {
       setText(stat.trains, `${s.trains} on the line, ${s.trainsStanding} standing`);
       setText(stat.signals, `${s.signalsAtStop} of ${s.signals} at stop`);
       setText(stat.nodes, `${s.nodesCompromised} compromised, ${s.nodesLost} lost control`);
+      setText(stat.detect, timeToDetect(session.world()));
       setText(stat.routes, `${s.routesSet} set, ${s.interlockingsDown} interlockings down`);
 
       const { latest, total } = log.refusal();

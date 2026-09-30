@@ -215,6 +215,18 @@ export class EventLog {
           `${KIND_NAME[event.kind]} placed on ${event.conduit === "" ? (event.links[0] ?? "a link") : n.conduit(event.conduit)}, in force from ${formatClock(event.activeFrom - start)}`,
         );
         break;
+      case "ids.alert": {
+        const t = n.technique(event.technique);
+        const where = event.conduit === "" ? event.link : n.conduit(event.conduit);
+        const by = event.sensor === "baseline" ? "baseline monitoring" : `sensor ${event.sensor}`;
+        this.add(
+          event.tick,
+          start,
+          "detection",
+          `IDS alert: ${[event.technique, t?.name].filter(Boolean).join(" ")} seen on ${where} (${by})`,
+        );
+        break;
+      }
       case "defense.removed":
         this.add(event.tick, start, "defense", `Defense ${event.id} removed`);
         break;

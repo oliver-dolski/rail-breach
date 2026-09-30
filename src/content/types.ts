@@ -61,6 +61,11 @@ export interface LinkDef {
   latencyTicks: number;
   /** Set on links that cross zones. */
   conduit?: ConduitId;
+  /**
+   * How much of the traffic a sensor on this link can read, in permille. Absent means all
+   * of it; an encrypted tunnel shows far less. Shifts detection down, never up.
+   */
+  visibilityPermille?: number;
 }
 
 /** IEC 62443 conduit: the group of channels between two zones. */

@@ -65,3 +65,12 @@ export const DENIAL_OF_CONTROL_RECOVER_TICKS = 1200;
  * call about what reads as a fast but not free response.
  */
 export const DEFENSE_PLACEMENT_LATENCY_TICKS = 20;
+
+/**
+ * How much of a link's traffic the sensors see: a network with no sensor placed still has
+ * the always-on baseline (logs, a flow collector), and a placed IDS sensor sees it all.
+ * Permille of the technique's signature. Judgement calls about how a real plant looks:
+ * mostly blind to a careful intruder until someone puts a sensor on the conduit.
+ */
+export const BASELINE_SENSOR_COVERAGE_PERMILLE = 300;
+export const SENSOR_COVERAGE_PERMILLE = 1000;

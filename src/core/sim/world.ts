@@ -122,6 +122,10 @@ export interface World {
   defenses: DefenseInstance[];
   /** Number of placements ever made; the next placement gets id d<this + 1>. */
   defenseSeq: number;
+  /** Tick of the attacker's first action (an operation that started), or 0 before any. */
+  firstActionTick: number;
+  /** Tick of the first IDS alert, or 0 while nothing has been noticed. */
+  detectedAt: number;
 }
 
 /** Total order on ids: ties are impossible because ids are unique. */
@@ -169,6 +173,8 @@ export function createWorld(content: Content, seed: number): World {
     darkSignals: [],
     defenses: [],
     defenseSeq: 0,
+    firstActionTick: 0,
+    detectedAt: 0,
   };
 }
 
@@ -192,5 +198,7 @@ export function cloneWorld(world: World): World {
     darkSignals: [...world.darkSignals],
     defenses: world.defenses.map((d) => ({ ...d, allow: [...d.allow] })),
     defenseSeq: world.defenseSeq,
+    firstActionTick: world.firstActionTick,
+    detectedAt: world.detectedAt,
   };
 }

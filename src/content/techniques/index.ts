@@ -23,6 +23,7 @@ export const spearphishingAttachment: TechniqueDef = {
   durationTicks: [30, 50],
   successPermille: 950,
   resistance: "host-and-user",
+  signaturePermille: 250,
   effects: [{ k: "foothold", priv: 1 }],
   explain:
     "A crafted message reaches a corporate user and one opened attachment gives the intruder a first foothold.",
@@ -38,6 +39,7 @@ export const networkConnectionEnumeration: TechniqueDef = {
   durationTicks: [20, 30],
   successPermille: 1000,
   resistance: "none",
+  signaturePermille: 0,
   effects: [{ k: "discover", hops: 3 }],
   explain:
     "From the foothold the intruder lists which systems talk to which, learning where the next hops lead.",
@@ -53,6 +55,7 @@ export const remoteServices: TechniqueDef = {
   durationTicks: [30, 50],
   successPermille: 950,
   resistance: "host",
+  signaturePermille: 200,
   effects: [
     { k: "foothold", priv: 1 },
     { k: "blockCommands", onTag: "has-cmd-channel" },
@@ -72,6 +75,7 @@ export const externalRemoteServices: TechniqueDef = {
   durationTicks: [30, 50],
   successPermille: 850,
   resistance: "host",
+  signaturePermille: 120,
   effects: [{ k: "foothold", priv: 1 }],
   explain:
     "The intruder signs in through the remote access service that the vendor is meant to use and arrives inside the network as a trusted party.",
@@ -87,6 +91,7 @@ export const validAccounts: TechniqueDef = {
   durationTicks: [20, 40],
   successPermille: 900,
   resistance: "none",
+  signaturePermille: 100,
   effects: [{ k: "foothold", priv: 1 }],
   explain:
     "A genuine maintenance account opens a session on the engineering interface; nothing is broken, so nothing looks broken.",
@@ -102,6 +107,7 @@ export const exploitationOfRemoteServices: TechniqueDef = {
   durationTicks: [40, 70],
   successPermille: 800,
   resistance: "host",
+  signaturePermille: 600,
   effects: [{ k: "foothold", priv: 2 }],
   explain:
     "A weakness in a remote service that was never patched lets the intruder in without any credentials and with system-level reach.",
@@ -118,6 +124,7 @@ export const unauthorizedCommandMessage: TechniqueDef = {
   durationTicks: [30, 50],
   successPermille: 900,
   resistance: "none",
+  signaturePermille: 550,
   effects: [{ k: "blockCommands" }],
   explain:
     "Commands that no dispatcher sent reach one interlocking; it can only answer them restrictively, so routes are refused and signals stay at danger.",
@@ -133,6 +140,7 @@ export const modifyParameter: TechniqueDef = {
   durationTicks: [30, 60],
   successPermille: 800,
   resistance: "none",
+  signaturePermille: 350,
   effects: [{ k: "clampParam", param: "speed", permille: 250 }],
   explain:
     "An engineering parameter is changed so the sections of one interlocking carry a far lower speed limit; the vital layer only ever accepts a change that makes things safer, so trains crawl.",
@@ -149,6 +157,7 @@ export const blockCommandMessage: TechniqueDef = {
   durationTicks: [30, 50],
   successPermille: 900,
   resistance: "host",
+  signaturePermille: 450,
   effects: [{ k: "blockCommands" }],
   explain:
     "Commands are accepted by the console and never arrive; dispatchers set routes and nothing happens, so trains queue at red signals.",
@@ -164,6 +173,7 @@ export const denialOfControl: TechniqueDef = {
   durationTicks: [20, 40],
   successPermille: 900,
   resistance: "host",
+  signaturePermille: 500,
   effects: [
     {
       k: "denyControl",
@@ -185,6 +195,7 @@ export const lossOfView: TechniqueDef = {
   durationTicks: [30, 60],
   successPermille: 850,
   resistance: "host",
+  signaturePermille: 400,
   effects: [{ k: "setView", state: "frozen" }],
   explain:
     "The track diagram freezes: the operators no longer see where trains are, and only a local restoration at the station brings the picture back.",
@@ -200,6 +211,7 @@ export const lossOfSafety: TechniqueDef = {
   durationTicks: [60, 100],
   successPermille: 850,
   resistance: "host",
+  signaturePermille: 500,
   effects: [{ k: "degrade", state: "down" }],
   explain:
     "The safety function of one interlocking is taken out; a fail-safe system answers by going to its safe state, with signals at danger and trains held.",
@@ -216,6 +228,7 @@ export const unauthorizedReportingMessage: TechniqueDef = {
   durationTicks: [25, 40],
   successPermille: 900,
   resistance: "host",
+  signaturePermille: 400,
   effects: [{ k: "setView", state: "spoofed" }],
   explain:
     "From a foothold on the supervisory path the intruder feeds the operators reports that look right and are not; their picture of the line departs from the track while the interlocking keeps reading its own protected inputs.",

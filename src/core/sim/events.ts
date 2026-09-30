@@ -80,6 +80,20 @@ export type SimEvent =
       activeFrom: number;
     }
   | { k: "defense.removed"; tick: number; id: string }
+  /**
+   * A sensor noticed one hop of an operation. `legacyId` is the technique's old ID or "";
+   * `conduit` is "" for a link inside a zone; `sensor` is the placed sensor's id or "baseline".
+   */
+  | {
+      k: "ids.alert";
+      tick: number;
+      op: number;
+      technique: string;
+      legacyId: string;
+      link: string;
+      conduit: string;
+      sensor: string;
+    }
   | { k: "signal.aspect"; tick: number; signal: string; aspect: Aspect }
   | { k: "interlocking.health"; tick: number; il: string; health: "ok" | "down" }
   | { k: "train.spawned"; tick: number; train: string; service: string }

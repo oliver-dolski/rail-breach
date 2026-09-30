@@ -104,6 +104,9 @@ export function validateContent(content: Content): void {
     if (!Number.isInteger(link.latencyTicks) || link.latencyTicks < 1) {
       problems.push(`link "${link.id}" latencyTicks must be an integer >= 1`);
     }
+    if (link.visibilityPermille !== undefined && !isPermille(link.visibilityPermille)) {
+      problems.push(`link "${link.id}" visibilityPermille must be an integer 0..1000`);
+    }
     if (link.conduit !== undefined && !conduits.has(link.conduit)) {
       problems.push(`link "${link.id}" references unknown conduit "${link.conduit}"`);
     }
@@ -188,6 +191,9 @@ export function validateTechniques(
     }
     if (!isPermille(def.successPermille)) {
       problems.push(`${owner} successPermille must be an integer 0..1000`);
+    }
+    if (!isPermille(def.signaturePermille)) {
+      problems.push(`${owner} signaturePermille must be an integer 0..1000`);
     }
     for (const effect of def.effects) {
       if (effect.k === "discover" && !isCount(effect.hops, 0)) {
