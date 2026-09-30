@@ -2,14 +2,17 @@ import {
   ACCEL_PERIOD_TICKS,
   EMERGENCY_BRAKE_PERIOD_TICKS,
   OVERRUN_RECOVERY_TICKS,
+  PERMILLE,
   SERVICE_BRAKE_PERIOD_TICKS,
   STOP_MARGIN_DM,
   STOP_TOLERANCE_DM,
   TERMINUS_DWELL_TICKS,
+  TRAIN_LENGTH_DM,
 } from "../sim/constants";
 import type { SimEvent, StopCause } from "../sim/events";
 import type { Index } from "../sim/model";
 import type { TrainState, World } from "../sim/world";
+import { deriveRailInputs, type RailInputs } from "./inputs";
 import { deriveAspect, isRestrictive } from "./interlocking";
 import { stopDistance } from "./kinematics";
 import { computeOccupancy, OCCUPIED, type ServiceGeometry } from "./trackGraph";
@@ -71,7 +74,7 @@ function findLimit(
  * distance from the resulting state still fits, brakes when it no longer does,
  * and uses the emergency rate when even service braking would overrun.
  */
-function nextSpeed(v: number, room: number, k: number, vmax: number): number {
+function plannedSpeed(v: number, room: number, k: number, vmax: number): number {
   const fitsAfter = (vn: number): boolean =>
     room - v >= stopDistance(vn, k + 1, SERVICE_BRAKE_PERIOD_TICKS);
   if (v < vmax && k % ACCEL_PERIOD_TICKS === 0 && fitsAfter(v + 1)) return v + 1;
@@ -80,6 +83,43 @@ function nextSpeed(v: number, room: number, k: number, vmax: number): number {
     return k % SERVICE_BRAKE_PERIOD_TICKS === 0 ? Math.max(0, v - 1) : v;
   }
   return k % EMERGENCY_BRAKE_PERIOD_TICKS === 0 ? Math.max(0, v - 1) : v;
+}
+
+/**
+ * `plannedSpeed` under a speed cap that may sit below the current speed. Over the
+ * cap the train sheds speed at the service rate and takes whichever is lower, the
+ * shed or the braking the stop needs, so a cap can only ever slow a train and never
+ * leaves it less able to stop.
+ */
+function nextSpeed(v: number, room: number, k: number, vmax: number): number {
+  const planned = plannedSpeed(v, room, k, vmax);
+  if (v <= vmax) return planned;
+  const shed = k % SERVICE_BRAKE_PERIOD_TICKS === 0 ? v - 1 : v;
+  return Math.min(planned, shed);
+}
+
+/**
+ * The fastest the train may go right now: line speed, lowered to the lowest cap of
+ * any section its body lies on (front to tail). A section with no cap adds nothing,
+ * and with no caps at all this is line speed exactly.
+ */
+function speedCap(
+  train: TrainState,
+  geometry: ServiceGeometry,
+  sections: readonly string[],
+  clamps: Record<string, number>,
+  vmax: number,
+): number {
+  let permille = PERMILLE;
+  const tail = train.posDm - TRAIN_LENGTH_DM;
+  geometry.pathSections.forEach((section, i) => {
+    const start = geometry.blockStartDm[i] ?? 0;
+    const end = geometry.blockStartDm[i + 1] ?? geometry.lengthDm;
+    if (start > train.posDm || end <= tail) return;
+    const cap = clamps[sections[section] ?? ""];
+    if (cap !== undefined && cap < permille) permille = cap;
+  });
+  return Math.floor((vmax * permille) / PERMILLE);
 }
 
 /** Advances the train's signal pointer past every signal its front crossed this tick. */
@@ -109,10 +149,15 @@ function moveTrain(
   train: TrainState,
   geometry: ServiceGeometry,
   occ: Uint8Array,
+  clamps: Record<string, number>,
   events: SimEvent[],
 ): boolean {
   const tick = world.tick;
-  const vmax = index.rail.graph.vmaxDmPerTick;
+  const { graph } = index.rail;
+  const vmax =
+    Object.keys(clamps).length === 0
+      ? graph.vmaxDmPerTick
+      : speedCap(train, geometry, graph.sections, clamps, graph.vmaxDmPerTick);
   const v = train.speedDmPerTick;
 
   if (train.dwell > 0) {
@@ -181,13 +226,19 @@ function decrementDue(tick: number, period: number): boolean {
  * from a snapshot taken before any train moves, so the result does not depend
  * on the order trains are visited in.
  */
-export function stepTrains(world: World, index: Index, events: SimEvent[]): void {
+export function stepTrains(
+  world: World,
+  index: Index,
+  events: SimEvent[],
+  inputs: RailInputs = deriveRailInputs(world, index),
+): void {
   const { graph } = index.rail;
+  const clamps = inputs.paramClamps;
   const occ = computeOccupancy(world, graph);
   const kept: TrainState[] = [];
   for (const train of world.trains) {
     const geometry = graph.services.get(train.service);
-    if (geometry === undefined || moveTrain(world, index, train, geometry, occ, events)) {
+    if (geometry === undefined || moveTrain(world, index, train, geometry, occ, clamps, events)) {
       kept.push(train);
     }
   }

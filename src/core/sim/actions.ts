@@ -1,3 +1,4 @@
+import { restoreNode } from "../attack/effects";
 import { launchTechnique } from "../attack/ops";
 import { enqueueRequest } from "../rail/interlocking";
 import type { SimEvent } from "./events";
@@ -14,12 +15,33 @@ export type Action =
   /** Ask an interlocking to set a route. The interlocking may refuse. */
   | { type: "route.request"; route: string }
   /** Ask an interlocking to cancel a route it holds. Always a restrictive request. */
-  | { type: "route.cancel"; route: string };
+  | { type: "route.cancel"; route: string }
+  /**
+   * Local restoration at a node: the operators fix it on site. Clears what an attack
+   * did to the node (view, availability, command channel, controls, speed cap) and
+   * never the attacker's foothold. It has nothing to do with routes, signals or trains.
+   */
+  | { type: "restore"; node: string };
 
-/** Runtime guard for untrusted input such as a parsed recording. Extend with the union. */
+/** The keys each action type may carry, and no others. */
+const ACTION_KEYS = new Map<string, readonly string[]>([
+  ["noop", ["type"]],
+  ["technique.launch", ["type", "technique", "target"]],
+  ["route.request", ["type", "route"]],
+  ["route.cancel", ["type", "route"]],
+  ["restore", ["type", "node"]],
+]);
+
+/**
+ * Runtime guard for untrusted input such as a parsed recording. Extend with the
+ * union. The shape is exact: a known type with any key beyond its own is refused,
+ * so a hostile recorded action cannot carry extra fields into the engine.
+ */
 export function isAction(value: unknown): value is Action {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
+  const allowed = typeof v.type === "string" ? ACTION_KEYS.get(v.type) : undefined;
+  if (allowed === undefined || !Object.keys(v).every((key) => allowed.includes(key))) return false;
   switch (v.type) {
     case "noop":
       return true;
@@ -28,6 +50,8 @@ export function isAction(value: unknown): value is Action {
     case "route.request":
     case "route.cancel":
       return typeof v.route === "string";
+    case "restore":
+      return typeof v.node === "string";
     default:
       return false;
   }
@@ -64,6 +88,14 @@ export function applyAction(
         return;
       }
       launchTechnique(world, action, tick, events, index);
+      return;
+    }
+    case "restore": {
+      if (!world.nodes.some((n) => n.id === action.node)) {
+        events.push({ k: "action.rejected", tick, reason: "unknown-node" });
+        return;
+      }
+      restoreNode(world, action.node, tick, events);
       return;
     }
   }

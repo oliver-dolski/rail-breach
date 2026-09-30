@@ -1,7 +1,8 @@
+import { PERMILLE } from "../sim/constants";
 import type { SimEvent } from "../sim/events";
 import type { Index } from "../sim/model";
 import type { Availability, NodeState, ViewState, World } from "../sim/world";
-import type { Effect } from "./types";
+import type { Effect, EffectKind } from "./types";
 
 /**
  * The only place an attack touches the world, and it touches nothing but the
@@ -9,8 +10,8 @@ import type { Effect } from "./types";
  * controlRecoverAt, view, availability, paramClampPermille). Every write is
  * monotone: a foothold never shrinks, a flag only turns on (and a temporary denial
  * only ever lasts longer), a view or an availability only gets worse and a
- * parameter cap only goes down. The way back is the lifecycle below, not the
- * attacker: a timer that lifts a temporary denial, and the local restoration.
+ * parameter cap only goes down. The way back is never the attacker's: it is the
+ * lifecycle below, a timer that lifts a temporary denial and the local restoration.
  * The railway learns of these fields solely through
  * deriveRailInputs, which can only restrict, so there is no path from here to a
  * lock, an aspect, a point or a train. Keep it that way: adding a member to
@@ -84,6 +85,52 @@ export function expireEffects(world: World, tick: number, events: SimEvent[]): v
       events.push({ k: "effect.cleared", tick, node: node.id, effect: "denyControl" });
     }
   }
+}
+
+/**
+ * Local restoration at a node, the answer to the restore action: the operators'
+ * picture, the node's availability, its command channel, its controls and its
+ * parameter cap all go back to normal. What the attacker learned (foothold,
+ * discovery) stays: restoring a system does not evict an intruder. It returns
+ * the cyber fields to the state of an undisturbed railway, which is the state the
+ * safety case already covers, and it is only ever reached through an action, never
+ * through an effect. Returns true when anything changed.
+ */
+export function restoreNode(
+  world: World,
+  nodeId: string,
+  tick: number,
+  events: SimEvent[],
+): boolean {
+  const node = world.nodes.find((n) => n.id === nodeId);
+  if (node === undefined) return false;
+  let changed = false;
+  const cleared = (effect: EffectKind): void => {
+    changed = true;
+    events.push({ k: "effect.cleared", tick, node: node.id, effect });
+  };
+  if (node.view !== "ok") {
+    node.view = "ok";
+    cleared("setView");
+  }
+  if (node.availability !== "ok") {
+    node.availability = "ok";
+    cleared("degrade");
+  }
+  if (node.cmdBlocked) {
+    node.cmdBlocked = false;
+    cleared("blockCommands");
+  }
+  if (node.controlDenied) {
+    node.controlDenied = false;
+    node.controlRecoverAt = 0;
+    cleared("denyControl");
+  }
+  if (node.paramClampPermille < PERMILLE) {
+    node.paramClampPermille = PERMILLE;
+    cleared("clampParam");
+  }
+  return changed;
 }
 
 /** Worse views rank higher; a write that would not rank higher is ignored. */
