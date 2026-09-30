@@ -1,0 +1,31 @@
+{
+  "name": "rail-breach",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live attack simulation on a fictional railway network, driven by MITRE ATT&CK for ICS techniques.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "typecheck:core": "tsc --noEmit -p tsconfig.core.json",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "lint:core": "node scripts/check-core-determinism.mjs"
+  },
+  "dependencies": {
+    "twgl.js": "7.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "22.20.4",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}
