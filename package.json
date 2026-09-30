@@ -16,7 +16,8 @@
     "typecheck:core": "tsc --noEmit -p tsconfig.core.json",
     "test": "vitest run",
     "lint": "biome check .",
-    "lint:core": "node scripts/check-core-determinism.mjs"
+    "lint:core": "node scripts/check-core-determinism.mjs",
+    "prepare": "git config core.hooksPath .githooks || echo hooks not installed: not a git checkout"
   },
   "dependencies": {
     "twgl.js": "7.0.0"

@@ -1,0 +1,15 @@
+# Node
+node_modules/
+dist/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local scratch space
+scratch/
+
+# Secrets and local overrides
+.env*
+*.local

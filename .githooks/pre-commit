@@ -1,0 +1,10 @@
+#!/bin/sh
+# core.hooksPath points at .githooks, which disables any machine-wide hooks.
+# Chain to the global pre-commit hook when one is configured so local
+# safety checks keep running; on machines without one this is a no-op.
+global_dir=$(git config --global --get core.hooksPath)
+[ -n "$global_dir" ] || exit 0
+global_hook="$global_dir/pre-commit"
+[ -f "$global_hook" ] || exit 0
+[ "$(cd "$global_dir" 2>/dev/null && pwd)" = "$(cd .githooks && pwd)" ] && exit 0
+exec "$global_hook" "$@"

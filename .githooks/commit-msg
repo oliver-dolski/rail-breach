@@ -1,0 +1,6 @@
+#!/bin/sh
+# Rejects co-author trailers, generated-with banners and long dashes in commit
+# messages, plus any phrase in the untracked .git/info/commit-msg-deny list.
+# Installed by "npm install" through the prepare script (core.hooksPath).
+cd "$(git rev-parse --show-toplevel)" || exit 1
+exec node scripts/check-commit-msg.mjs "$1" "$(git rev-parse --git-path info/commit-msg-deny)"
