@@ -4,16 +4,22 @@ import { deriveAspects } from "../../../src/core/rail/interlocking";
 import type { SimEvent } from "../../../src/core/sim/events";
 import { createWorld } from "../../../src/core/sim/world";
 import {
+  firstLaunchTick,
   lastLaunchTick,
   networkIndex,
   nodeOf,
   run,
   scenario,
   startWorld,
+  warmWorld,
   withoutProtocol,
 } from "../../fixtures/attack";
 
 const index = networkIndex();
+/** Session time: 10 ticks are one second. */
+const T0 = firstLaunchTick;
+const SECOND = 10;
+const warm = () => warmWorld(index);
 
 const CHAIN = new Set(["T0865", "T0840", "T0886"]);
 const ATTACK_EVENTS = new Set([
@@ -37,7 +43,7 @@ function kinds<K extends SimEvent["k"]>(events: SimEvent[], k: K): Extract<SimEv
 
 describe("T0865 Spearphishing Attachment", () => {
   it("travels from the outside through the mail gateway and lands a user foothold", () => {
-    const { world, events } = run(startWorld(), index, scenario.actions, 300);
+    const { world, events } = run(warm(), index, scenario.actions, T0 + 56);
     expect(kinds(events, "op.started")[0]).toMatchObject({
       technique: "T0865",
       target: "corp-ws-dispatch",
@@ -70,7 +76,7 @@ describe("T0840 Network Connection Enumeration", () => {
   });
 
   it("marks what is within three links and nothing beyond", () => {
-    const { world } = run(startWorld(), index, scenario.actions, 400);
+    const { world } = run(warm(), index, scenario.actions, T0 + 200);
     for (const near of ["corp-mail", "dmz-relay", "dispatch-hmi-1", "tms-server"]) {
       expect(nodeOf(world, near).discovered, near).toBe(true);
     }
@@ -93,7 +99,7 @@ describe("T0886 Remote Services", () => {
   it("moves only over conduits that permit remote-services", () => {
     // The corporate-to-DMZ link stops carrying remote sessions.
     const shut = networkIndex(withoutProtocol("l-dispatch-dmz", "remote-services"));
-    const { world, events } = run(startWorld(), shut, scenario.actions, 700);
+    const { world, events } = run(warm(), shut, scenario.actions, T0 + 500);
     expect(nodeOf(world, "corp-ws-dispatch").integrity).toBe(1);
     expect(nodeOf(world, "dmz-relay").integrity).toBe(0);
     expect(nodeOf(world, "tms-server").cmdBlocked).toBe(false);
@@ -106,12 +112,13 @@ describe("T0886 Remote Services", () => {
 
   it("ends a payload that finds its link shut while it is in flight, and says so", () => {
     const shut = networkIndex(withoutProtocol("l-dispatch-dmz", "remote-services"));
-    // T0886 to the relay launches at 400 and would arrive at 404: shut the link at 402.
+    // T0886 to the relay arrives four ticks after it launches: shut the link after two.
+    const relayLaunch = scenario.actions[2]?.t ?? 0;
     const { world, events } = run(
-      startWorld(),
-      (tick) => (tick >= 402 ? shut : index),
-      scenario.actions.filter((x) => x.t <= 400),
-      600,
+      warm(),
+      (tick) => (tick >= relayLaunch + 2 ? shut : index),
+      scenario.actions.filter((x) => x.t <= relayLaunch),
+      relayLaunch + 200,
     );
     expect(kinds(events, "op.blocked")).toEqual([
       expect.objectContaining({
@@ -126,8 +133,8 @@ describe("T0886 Remote Services", () => {
 });
 
 describe("the phishing chain end to end", () => {
-  const ATTACK_LANDS = 649; // tick the last technique succeeds, pinned by the recorded seed
-  const attacked = run(startWorld(), index, scenario.actions, scenario.durationTicks);
+  const ATTACK_LANDS = 7553; // tick the last technique succeeds, pinned by the recorded seed
+  const attacked = run(warm(), index, scenario.actions, scenario.durationTicks);
 
   it("succeeds at every step with the recorded seed, in order", () => {
     const done = kinds(attacked.events, "technique.succeeded");
@@ -166,24 +173,60 @@ describe("the phishing chain end to end", () => {
     expect(effects.map((e) => e.effect)).toEqual(["foothold", "blockCommands", "denyControl"]);
   });
 
-  it("makes the interlockings refuse new routes, so the signals fall to stop and a train halts", () => {
+  it("makes the interlockings refuse new routes, so a train halts at a red signal", () => {
     const after = attacked.events.filter((e) => e.tick > ATTACK_LANDS);
     expect(kinds(after, "route.set")).toEqual([]);
     const refusals = kinds(after, "command.rejected");
     expect(refusals.length).toBeGreaterThan(0);
     expect(refusals.some((r) => r.reason === "command channel is blocked")).toBe(true);
+    expect(
+      kinds(after, "train.stopped").filter((e) => e.cause === "signal").length,
+    ).toBeGreaterThan(0);
+  });
 
-    const halted = kinds(after, "train.stopped").filter((e) => e.cause === "signal");
-    expect(halted.length).toBeGreaterThan(0);
-    expect(attacked.world.trains.length).toBeGreaterThan(0);
-    expect(attacked.world.trains.every((t) => t.speedDmPerTick === 0)).toBe(true);
-    for (const aspect of deriveAspects(attacked.world, index)) {
+  it("leaves every signal at stop and every train standing once the routes already set are used up", () => {
+    const settled = run(warm(), index, scenario.actions, ATTACK_LANDS + 2500);
+    expect(settled.world.trains.length).toBeGreaterThan(0);
+    expect(settled.world.trains.every((t) => t.speedDmPerTick === 0)).toBe(true);
+    for (const aspect of deriveAspects(settled.world, index)) {
       expect(["stop", "dark"]).toContain(aspect);
     }
   });
 
+  it("shows the first packet within a second of the start and lands the chain within 20 seconds", () => {
+    const packets = kinds(attacked.events, "packet");
+    const firstPacket = packets[0]?.tick ?? 0;
+    expect(firstPacket - scenario.startTick).toBeLessThanOrEqual(SECOND);
+    expect(ATTACK_LANDS - firstPacket).toBeLessThanOrEqual(20 * SECOND);
+  });
+
+  it("holds a train that the quiet railway lets through, within 50 seconds of the first packet", () => {
+    // Braking is 1 m/s^2, so this is how soon the lost command channel can stop a train at
+    // all; the start tick of the scenario is the one where it is soonest. A halt counts only
+    // when it is the attack's doing: the train still stands 25 seconds later while on the
+    // quiet railway the same train has moved on.
+    const firstPacket = kinds(attacked.events, "packet")[0]?.tick ?? 0;
+    const halts = kinds(attacked.events, "train.stopped").filter(
+      (e) => e.cause === "signal" && e.tick > ATTACK_LANDS,
+    );
+    const caused = halts.find((e) => {
+      const later = e.tick + 250;
+      const held = run(warm(), index, scenario.actions, later).world.trains.find(
+        (t) => t.id === e.train,
+      );
+      const free = run(warm(), index, [], later).world.trains.find((t) => t.id === e.train);
+      return (
+        held !== undefined &&
+        held.speedDmPerTick === 0 &&
+        (free === undefined || free.posDm > held.posDm + 300)
+      );
+    });
+    if (caused === undefined) throw new Error("the attack held no train");
+    expect(caused.tick - firstPacket).toBeLessThanOrEqual(50 * SECOND);
+  });
+
   it("is the attack that stopped them: the same railway keeps running without it", () => {
-    const calm = run(startWorld(), index, [], scenario.durationTicks);
+    const calm = run(warm(), index, [], scenario.durationTicks);
     const setAfter = kinds(calm.events, "route.set").filter((e) => e.tick > ATTACK_LANDS);
     expect(setAfter.length).toBeGreaterThan(0);
     expect(calm.world.trains.some((t) => t.speedDmPerTick > 0)).toBe(true);
@@ -197,8 +240,9 @@ describe("the phishing chain end to end", () => {
   });
 
   it("does not depend on which world instance runs it", () => {
-    const again = run(createWorld(network, scenario.seed), index, scenario.actions, 800);
-    const shorter = run(startWorld(), index, scenario.actions, 800);
+    const upTo = T0 + 800;
+    const again = run(createWorld(network, scenario.seed), index, scenario.actions, upTo);
+    const shorter = run(warm(), index, scenario.actions, upTo);
     expect(again.world).toEqual(shorter.world);
   });
 });

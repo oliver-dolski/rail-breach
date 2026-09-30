@@ -58,8 +58,19 @@ export const scenario = phishingDispatcher;
 /** The scenario's world at tick 0 with its recorded seed. */
 export const startWorld = (): World => createWorld(network, scenario.seed);
 
-/** The tick of the last action of the scenario. */
+/** The tick of the first and of the last action of the scenario. */
+export const firstLaunchTick = Math.min(...scenario.actions.map((x) => x.t));
 export const lastLaunchTick = Math.max(...scenario.actions.map((x) => x.t));
+
+let warm: World | undefined;
+/**
+ * The scenario's world at its start tick, before any action. The quiet stretch
+ * runs once per test file and the result is reused: step never mutates a world.
+ */
+export function warmWorld(index: Index): World {
+  warm ??= run(startWorld(), index, [], scenario.startTick).world;
+  return warm;
+}
 
 export function nodeOf(world: World, id: string): World["nodes"][number] {
   const node = world.nodes.find((n) => n.id === id);
