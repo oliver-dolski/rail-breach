@@ -4,6 +4,7 @@ import { network } from "../../../src/content/network";
 import { techniques } from "../../../src/content/techniques";
 import { applyEffect } from "../../../src/core/attack/effects";
 import type { Effect } from "../../../src/core/attack/types";
+import { deriveRailInputs } from "../../../src/core/rail/inputs";
 import { deriveAspects } from "../../../src/core/rail/interlocking";
 import type { Aspect, SimEvent } from "../../../src/core/sim/events";
 import { step } from "../../../src/core/sim/step";
@@ -15,6 +16,34 @@ const index = networkIndex();
 /** Every distinct effect any registered technique can apply, straight from the registry. */
 const effects: Effect[] = [
   ...new Map(techniques.flatMap((t) => t.effects).map((e) => [JSON.stringify(e), e])).values(),
+];
+
+/**
+ * Every member of the Effect union at every value the engine accepts, not only the
+ * values a technique happens to use today, so a later technique cannot reach an
+ * unreviewed one. The guard below is run for each entry on every node.
+ */
+const VARIANTS: Effect[] = [
+  { k: "foothold", priv: 1 },
+  { k: "foothold", priv: 2 },
+  { k: "discover", hops: 3 },
+  { k: "blockCommands" },
+  { k: "blockCommands", onTag: "has-cmd-channel" },
+  { k: "denyControl" },
+  { k: "denyControl", onTag: "has-cmd-channel", recoverTicks: 100 },
+  { k: "setView", state: "spoofed" },
+  { k: "setView", state: "frozen" },
+  { k: "setView", state: "blank" },
+  { k: "degrade", state: "degraded" },
+  { k: "degrade", state: "down" },
+  { k: "clampParam", param: "speed", permille: 0 },
+  { k: "clampParam", param: "speed", permille: 250 },
+  { k: "clampParam", param: "speed", permille: 999 },
+];
+
+/** The registry's effects plus every variant above, each exactly once. */
+const allEffects: Effect[] = [
+  ...new Map([...effects, ...VARIANTS].map((e) => [JSON.stringify(e), e])).values(),
 ];
 const nodeIds = network.nodes.map((n) => n.id).sort();
 
@@ -164,6 +193,74 @@ describe("the technique registry", () => {
     for (const name of declared) expect(name, name).not.toMatch(forbidden);
     // Every declared kind is used by some technique or is reviewed here on purpose.
     expect(new Set(effects.map((e) => e.k))).toEqual(new Set(declared));
+    // And every declared kind has a variant in the guard below, so none escapes the loop.
+    expect(new Set(VARIANTS.map((e) => e.k))).toEqual(new Set(declared));
+  });
+});
+
+describe("the new effects only ever move a field one way", () => {
+  const fresh = () => createWorld(network, 1);
+  const node = (world: World, id: string) => {
+    const found = world.nodes.find((n) => n.id === id);
+    if (found === undefined) throw new Error(`no node ${id}`);
+    return found;
+  };
+
+  it("a parameter cap only goes down, whatever order the clamps arrive in", () => {
+    const world = fresh();
+    let cap = node(world, "il-tav").paramClampPermille;
+    expect(cap).toBe(1000);
+    for (const permille of [999, 250, 600, 1000, 100, 100, 900, 0, 500]) {
+      const changed = applyEffect(world, index, "il-tav", {
+        k: "clampParam",
+        param: "speed",
+        permille,
+      });
+      const now = node(world, "il-tav").paramClampPermille;
+      expect(now, `after ${permille}`).toBeLessThanOrEqual(cap);
+      expect(now).toBe(Math.min(cap, permille));
+      expect(changed).toBe(permille < cap);
+      cap = now;
+    }
+  });
+
+  it("the derived rail inputs never carry a cap above normal speed", () => {
+    const world = fresh();
+    for (const id of nodeIds) {
+      applyEffect(world, index, id, { k: "clampParam", param: "speed", permille: 250 });
+    }
+    for (const value of Object.values(deriveRailInputs(world, index).paramClamps)) {
+      expect(value).toBeLessThanOrEqual(1000);
+    }
+  });
+
+  it("a view only gets worse: ok, spoofed, frozen, blank", () => {
+    const world = fresh();
+    const seen: string[] = [];
+    for (const state of ["frozen", "spoofed", "blank", "frozen", "spoofed"] as const) {
+      applyEffect(world, index, "tms-server", { k: "setView", state });
+      seen.push(node(world, "tms-server").view);
+    }
+    expect(seen).toEqual(["frozen", "frozen", "blank", "blank", "blank"]);
+  });
+
+  it("an availability only gets worse: ok, degraded, down", () => {
+    const world = fresh();
+    const seen: string[] = [];
+    for (const state of ["down", "degraded", "down", "degraded"] as const) {
+      applyEffect(world, index, "oc-tav", { k: "degrade", state });
+      seen.push(node(world, "oc-tav").availability);
+    }
+    expect(seen).toEqual(["down", "down", "down", "down"]);
+  });
+
+  it("a denial of control never turns itself off inside applyEffect", () => {
+    const world = fresh();
+    applyEffect(world, index, "dispatch-hmi-1", { k: "denyControl", recoverTicks: 1 });
+    expect(node(world, "dispatch-hmi-1").controlDenied).toBe(true);
+    // The lifetime is the lifecycle's business (plan 02-02); the write itself is one-way.
+    expect(applyEffect(world, index, "dispatch-hmi-1", { k: "denyControl" })).toBe(false);
+    expect(node(world, "dispatch-hmi-1").controlDenied).toBe(true);
   });
 });
 
@@ -194,7 +291,7 @@ describe("the effect code cannot reach the railway", () => {
 });
 
 describe("no effect, on any node, at any seed, makes the railway more permissive", () => {
-  for (const effect of effects) {
+  for (const effect of allEffects) {
     it(`${effect.k}${JSON.stringify(effect)}: one tick later, and over ${OBSERVE_TICKS} ticks`, () => {
       for (const seed of SEEDS) {
         const before = warmWorld(seed);
@@ -219,7 +316,7 @@ describe("no effect, on any node, at any seed, makes the railway more permissive
     for (const seed of SEEDS) {
       const attacked = cloneWorld(warmWorld(seed));
       for (const id of nodeIds)
-        for (const effect of effects) applyEffect(attacked, index, id, effect);
+        for (const effect of allEffects) applyEffect(attacked, index, id, effect);
       expectOnlyMonotoneCyberChanges(warmWorld(seed), attacked);
       expectNoMorePermissive(attacked, seed);
       const later = advance(attacked, OBSERVE_TICKS);
