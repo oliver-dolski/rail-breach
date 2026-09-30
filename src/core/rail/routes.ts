@@ -129,6 +129,22 @@ export function conflictsWith(
   return false;
 }
 
+/**
+ * Two held routes that can never coexist whatever the trains are doing: they
+ * share track, or they want one point in two positions. Overlap is left out on
+ * purpose. It is a lock-time protection whose effect is checked where it
+ * matters, on the trains themselves.
+ */
+export function hardConflict(a: RouteInfo, b: RouteInfo): boolean {
+  if (intersects(a.blockSections, b.blockSections)) return true;
+  for (const want of b.def.points) {
+    for (const have of a.def.points) {
+      if (have.point === want.point && have.pos !== want.pos) return true;
+    }
+  }
+  return false;
+}
+
 export function pointState(world: World, id: string): PointState | undefined {
   return world.points.find((p) => p.id === id);
 }

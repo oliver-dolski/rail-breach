@@ -1,0 +1,359 @@
+import { describe, expect, it } from "vitest";
+import { network } from "../../../src/content/network";
+import {
+  assertInvariants,
+  findViolations,
+  InvariantViolation,
+} from "../../../src/core/rail/invariants";
+import { roll32 } from "../../../src/core/rng";
+import { type Action, isAction } from "../../../src/core/sim/actions";
+import type { SimEvent } from "../../../src/core/sim/events";
+import { buildIndex, type Index } from "../../../src/core/sim/model";
+import { step } from "../../../src/core/sim/step";
+import { createWorld, type World } from "../../../src/core/sim/world";
+import { miniRail } from "../../fixtures/mini-rail";
+
+const SEEDS = 201; // seeds 0..200
+const FUZZ_TICKS = 3000;
+
+const routeIds = network.tracks.routes.map((r) => r.id).sort();
+const nodeIds = network.nodes.map((n) => n.id).sort();
+
+/** Dice purposes local to this test; the stateless roll keeps the run reproducible. */
+const P_WHEN = 1;
+const P_WHAT = 2;
+const P_WHICH = 3;
+
+function pick<T>(items: readonly T[], seed: number, tick: number, purpose: number): T {
+  const item = items[roll32(seed, tick, purpose) % items.length];
+  if (item === undefined) throw new Error("empty pick");
+  return item;
+}
+
+/**
+ * The cyber engine of a later plan sets NodeState fields; here the harness sets
+ * them directly. Every value written is a degradation, and every healing write
+ * only removes one, so the rail model must hold for every combination.
+ */
+function disturbNode(world: World, seed: number, tick: number): void {
+  const node = world.nodes.find((n) => n.id === pick(nodeIds, seed, tick, P_WHICH));
+  if (!node) return;
+  switch (roll32(seed, tick, P_WHAT + 10) % 8) {
+    case 0:
+      node.availability = "down";
+      break;
+    case 1:
+      node.availability = "degraded";
+      break;
+    case 2:
+      node.availability = "ok";
+      break;
+    case 3:
+      node.cmdBlocked = !node.cmdBlocked;
+      break;
+    case 4:
+      node.view = "spoofed";
+      break;
+    case 5:
+      node.view = "ok";
+      break;
+    case 6:
+      node.controlDenied = !node.controlDenied;
+      break;
+    default:
+      node.integrity = 2;
+  }
+}
+
+interface Tally {
+  injected: number;
+  rejected: number;
+  set: number;
+  overruns: number;
+  departures: number;
+  arrivals: number;
+  maxTrains: number;
+}
+
+function fuzzRun(seed: number, index: Index, ticks: number): Tally {
+  let world = createWorld(network, seed);
+  const tally: Tally = {
+    injected: 0,
+    rejected: 0,
+    set: 0,
+    overruns: 0,
+    departures: 0,
+    arrivals: 0,
+    maxTrains: 0,
+  };
+  for (let i = 0; i < ticks; i++) {
+    const tick = world.tick + 1;
+    const actions: Action[] = [];
+    // about one injection in twenty ticks
+    if (roll32(seed, tick, P_WHEN) % 20 === 0) {
+      tally.injected += 1;
+      switch (roll32(seed, tick, P_WHAT) % 3) {
+        case 0:
+          actions.push({ type: "route.cancel", route: pick(routeIds, seed, tick, P_WHICH) });
+          break;
+        case 1:
+          actions.push({ type: "route.request", route: pick(routeIds, seed, tick, P_WHICH) });
+          break;
+        default:
+          disturbNode(world, seed, tick);
+      }
+    }
+    const result = step(world, actions, index);
+    world = result.world;
+    tally.maxTrains = Math.max(tally.maxTrains, world.trains.length);
+    for (const e of result.events) {
+      if (e.k === "command.rejected") tally.rejected += 1;
+      if (e.k === "route.set") tally.set += 1;
+      if (e.k === "train.overran") tally.overruns += 1;
+      if (e.k === "train.spawned") tally.departures += 1;
+      if (e.k === "train.arrived") tally.arrivals += 1;
+    }
+  }
+  return tally;
+}
+
+describe("safety invariant", () => {
+  it("holds on the empty network, vacuously", () => {
+    const index = buildIndex(network);
+    const world = createWorld(network, 0);
+    expect(world.trains).toHaveLength(0);
+    expect(findViolations(world, index)).toEqual([]);
+  });
+
+  it("holds every tick of the un-attacked baseline", () => {
+    const index = buildIndex(network, { checkInvariants: true });
+    let world = createWorld(network, 0);
+    let overruns = 0;
+    for (let i = 0; i < 72000; i++) {
+      const result = step(world, [], index);
+      world = result.world;
+      overruns += result.events.filter((e) => e.k === "train.overran").length;
+    }
+    expect(overruns).toBe(0);
+    expect(findViolations(world, index)).toEqual([]);
+  });
+
+  it("holds for a single train on the small segment", () => {
+    const index = buildIndex(miniRail, { checkInvariants: true });
+    let world = createWorld(miniRail, 3);
+    for (let i = 0; i < 4000; i++) world = step(world, [], index).world;
+    expect(world.tick).toBe(4000);
+  });
+
+  it("names each rule it finds broken (planted violations)", () => {
+    const index = buildIndex(network);
+    const spawn = (id: string, service: string, posDm: number) => ({
+      id,
+      service,
+      posDm,
+      speedDmPerTick: 0,
+      sig: 0,
+      stop: 0,
+      dwell: 0,
+      overrun: -1,
+      lastReq: -100,
+    });
+
+    const twoInOne = createWorld(network, 0);
+    twoInOne.trains.push(spawn("A#1", "SV-DN", 12000), spawn("B#1", "SV-BR-DN", 12000));
+    for (const t of twoInOne.trains) t.sig = 1;
+    expect(findViolations(twoInOne, index).join("\n")).toMatch(/holds A#1 and B#1/);
+
+    const pastSignal = createWorld(network, 0);
+    pastSignal.trains.push(spawn("A#1", "SV-DN", 6000));
+    expect(findViolations(pastSignal, index).join("\n")).toMatch(
+      /past S-HAR-dn without having been let through/,
+    );
+
+    const tooFast = createWorld(network, 0);
+    const runaway = spawn("A#1", "SV-DN", 8400);
+    runaway.sig = 1;
+    runaway.speedDmPerTick = 33;
+    runaway.overrun = 0;
+    tooFast.trains.push(runaway);
+    expect(findViolations(tooFast, index).join("\n")).toMatch(
+      /cannot stop short of the overlap of S-HAR-dn/,
+    );
+
+    const conflicting = createWorld(network, 0);
+    const il = conflicting.interlockings.find((i) => i.id === "IL-VEL");
+    il?.locks.push({ route: "R-VEL-dn-br", used: false }, { route: "R-VEL-dn-main", used: false });
+    expect(findViolations(conflicting, index).join("\n")).toMatch(
+      /R-VEL-dn-br and R-VEL-dn-main conflict/,
+    );
+
+    const underTrain = createWorld(network, 0);
+    const point = underTrain.points.find((p) => p.id === "J1");
+    if (point) {
+      point.target = "reverse";
+      point.moving = 30;
+    }
+    const sitting = spawn("A#1", "SV-DN", 65000);
+    sitting.sig = 5;
+    underTrain.trains.push(sitting);
+    expect(findViolations(underTrain, index).join("\n")).toMatch(
+      /point J1 is moving while section/,
+    );
+
+    expect(() => assertInvariants(twoInOne, index)).toThrow(InvariantViolation);
+  });
+
+  it("has no action that could set a permissive state", () => {
+    expect(isAction({ type: "signal.set", signal: "S-HAR-dn", aspect: "proceed" })).toBe(false);
+    expect(isAction({ type: "route.force", route: "R-HAR-dn" })).toBe(false);
+    expect(isAction({ type: "point.move", point: "J1" })).toBe(false);
+    expect(isAction({ type: "train.move", train: "SV-DN#1" })).toBe(false);
+    expect(isAction({ type: "route.cancel", route: "R-HAR-dn" })).toBe(true);
+  });
+
+  it(`holds under random restrictive commands and cyber degradation over seeds 0..${SEEDS - 1}`, () => {
+    const index = buildIndex(network, { checkInvariants: true });
+    const total: Tally = {
+      injected: 0,
+      rejected: 0,
+      set: 0,
+      overruns: 0,
+      departures: 0,
+      arrivals: 0,
+      maxTrains: 0,
+    };
+    for (let seed = 0; seed < SEEDS; seed++) {
+      // step() throws InvariantViolation on the first broken rule
+      const tally = fuzzRun(seed, index, FUZZ_TICKS);
+      total.injected += tally.injected;
+      total.rejected += tally.rejected;
+      total.set += tally.set;
+      total.overruns += tally.overruns;
+      total.departures += tally.departures;
+      total.arrivals += tally.arrivals;
+      total.maxTrains = Math.max(total.maxTrains, tally.maxTrains);
+    }
+    // the fuzz really exercised the model: commands went in, some were refused, trains ran
+    expect(total.injected).toBeGreaterThan(SEEDS * 100);
+    expect(total.rejected).toBeGreaterThan(SEEDS * 10);
+    expect(total.set).toBeGreaterThan(SEEDS * 5);
+    expect(total.departures).toBeGreaterThan(SEEDS);
+    expect(total.maxTrains).toBeGreaterThanOrEqual(3);
+  }, 300_000);
+
+  it("gives the same result for the same seed", () => {
+    const index = buildIndex(network, { checkInvariants: true });
+    expect(fuzzRun(17, index, 1500)).toEqual(fuzzRun(17, index, 1500));
+  });
+});
+
+describe("unsafe commands are refused with a reason", () => {
+  function refusals(events: SimEvent[]): Extract<SimEvent, { k: "command.rejected" }>[] {
+    return events.filter(
+      (e): e is Extract<SimEvent, { k: "command.rejected" }> => e.k === "command.rejected",
+    );
+  }
+
+  it("rejects a route that conflicts with a locked route and says which", () => {
+    const index = buildIndex(network, { checkInvariants: true });
+    const first = step(
+      createWorld(network, 0),
+      [{ type: "route.request", route: "R-VEL-dn-main" }],
+      index,
+    );
+    expect(first.events.some((e) => e.k === "route.set" && e.route === "R-VEL-dn-main")).toBe(true);
+    const second = step(first.world, [{ type: "route.request", route: "R-VEL-dn-br" }], index);
+    const [refusal, ...rest] = refusals(second.events);
+    expect(rest).toEqual([]);
+    expect(refusal?.route).toBe("R-VEL-dn-br");
+    expect(refusal?.il).toBe("IL-VEL");
+    expect(refusal?.reason).toBe("conflicts with locked route R-VEL-dn-main");
+    expect(
+      second.world.interlockings.find((i) => i.id === "IL-VEL")?.locks.map((l) => l.route),
+    ).toEqual(["R-VEL-dn-main"]);
+  });
+
+  it("rejects a route over an occupied section and does not lock it", () => {
+    const index = buildIndex(network);
+    const world = createWorld(network, 0);
+    world.trains.push({
+      id: "X#1",
+      service: "SV-DN",
+      posDm: 20000,
+      speedDmPerTick: 0,
+      sig: 1,
+      stop: 0,
+      dwell: 0,
+      overrun: -1,
+      lastReq: -100,
+    });
+    const result = step(world, [{ type: "route.request", route: "R-HAR-dn" }], index);
+    expect(refusals(result.events).map((e) => e.reason)).toEqual(["section sec-L1_dn is occupied"]);
+    expect(result.world.interlockings.every((i) => i.locks.length === 0)).toBe(true);
+  });
+
+  it("rejects a route over a section reported disturbed", () => {
+    const index = buildIndex(network);
+    const world = createWorld(network, 0);
+    const oc = world.nodes.find((n) => n.id === "oc-tav");
+    if (oc) oc.availability = "degraded";
+    const result = step(world, [{ type: "route.request", route: "R-HAR-dn" }], index);
+    expect(refusals(result.events).map((e) => e.reason)).toEqual([
+      "section sec-L1_dn is disturbed",
+    ]);
+  });
+
+  it("rejects everything while the command channel is blocked or the interlocking is down", () => {
+    const index = buildIndex(network);
+    const blocked = createWorld(network, 0);
+    const fep = blocked.nodes.find((n) => n.id === "fep");
+    if (fep) fep.cmdBlocked = true;
+    const a = step(blocked, [{ type: "route.request", route: "R-L2-dn" }], index);
+    expect(refusals(a.events).map((e) => e.reason)).toEqual(["command channel is blocked"]);
+
+    const down = createWorld(network, 0);
+    const il = down.nodes.find((n) => n.id === "il-vel");
+    if (il) il.availability = "down";
+    const b = step(down, [{ type: "route.request", route: "R-L2-dn" }], index);
+    expect(refusals(b.events).map((e) => e.reason)).toEqual(["interlocking is out of service"]);
+    expect(b.events.some((e) => e.k === "interlocking.health" && e.health === "down")).toBe(true);
+  });
+
+  it("rejects an unknown route", () => {
+    const index = buildIndex(network);
+    const result = step(
+      createWorld(network, 0),
+      [{ type: "route.request", route: "R-NOPE" }],
+      index,
+    );
+    expect(refusals(result.events).map((e) => e.reason)).toEqual(["unknown route"]);
+  });
+
+  it("accepts a restrictive request: cancelling a held route that no train is near", () => {
+    const index = buildIndex(network, { checkInvariants: true });
+    const set = step(
+      createWorld(network, 0),
+      [{ type: "route.request", route: "R-VEL-dn-main" }],
+      index,
+    );
+    const cancelled = step(set.world, [{ type: "route.cancel", route: "R-VEL-dn-main" }], index);
+    expect(refusals(cancelled.events)).toEqual([]);
+    expect(cancelled.events.some((e) => e.k === "route.released" && e.cause === "cancelled")).toBe(
+      true,
+    );
+    expect(cancelled.world.interlockings.every((i) => i.locks.length === 0)).toBe(true);
+  });
+
+  it("refuses to cancel a route once a train is within braking distance of its signal", () => {
+    const index = buildIndex(network, { checkInvariants: true });
+    let world = createWorld(network, 0);
+    // R-HAR-dn is set by the dispatch layer as soon as SV-DN#1 appears
+    for (let i = 0; i < 110; i++) world = step(world, [], index).world;
+    const held = world.interlockings.flatMap((il) => il.locks).map((l) => l.route);
+    expect(held).toContain("R-HAR-dn");
+    const result = step(world, [{ type: "route.cancel", route: "R-HAR-dn" }], index);
+    expect(refusals(result.events).map((e) => e.reason)).toEqual([
+      "approach locked: a train is within braking distance of the signal",
+    ]);
+  });
+});

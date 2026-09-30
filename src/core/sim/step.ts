@@ -1,5 +1,6 @@
 import { stepCtc, stepTimetable } from "../rail/ctc";
 import { deriveAspects, stepInterlocking } from "../rail/interlocking";
+import { assertInvariants } from "../rail/invariants";
 import { stepTrains } from "../rail/trains";
 import { type Action, applyAction } from "./actions";
 import type { SimEvent } from "./events";
@@ -39,6 +40,7 @@ export function step(world: World, dueActions: readonly Action[], index?: Index)
     stepTimetable(next, index, events);
     stepCtc(next, index, events);
     stepTrains(next, index, events);
+    if (index.checkInvariants) assertInvariants(next, index);
 
     const after = deriveAspects(next, index);
     index.rail.graph.signals.forEach((signal, i) => {
