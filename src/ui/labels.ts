@@ -2,7 +2,7 @@ import type { Layout } from "../content/layout";
 import type { World } from "../core/sim/world";
 import type { NodeVisualState } from "../render/palette";
 import type { Geometry } from "../render/renderer";
-import { CONDUIT_LABEL_DY, nodeVisualState } from "../render/view";
+import { CONDUIT_LABEL_DY, NODE_LABEL_DY, nodeVisualState } from "../render/view";
 import { h } from "./dom";
 
 /**
@@ -44,7 +44,7 @@ export function createLabels(
 
   for (const z of layout.zones) add("lbl lbl-zone", z.label, z.x + 8, z.y + 6);
   for (const [id, n] of Object.entries(layout.nodes)) {
-    nodeEls.set(id, add("lbl lbl-node", n.label, n.x, n.y, 15));
+    nodeEls.set(id, add("lbl lbl-node", n.label, n.x, n.y, NODE_LABEL_DY));
   }
   for (const s of layout.stations) add("lbl lbl-station", s.name, s.x, s.y);
   for (const c of conduitMarks) {

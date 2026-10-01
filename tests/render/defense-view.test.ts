@@ -21,7 +21,9 @@ import {
   CONDUIT_LABEL_DY,
   conduitLabelBox,
   createViewContext,
+  NODE_LABEL_DY,
   nearestConduit,
+  nodeLabelBox,
 } from "../../src/render/view";
 import { placedRows, placementFor } from "../../src/ui/panel/defense";
 import { networkIndex, run } from "../fixtures/attack";
@@ -274,6 +276,89 @@ describe("conduit captions", () => {
         if (j <= i || world.defenses[i]?.link !== world.defenses[j]?.link) continue;
         expect(Math.hypot(g.x - other.x, g.y - other.y)).toBeGreaterThanOrEqual(2 * RADIUS + 4);
       }
+    }
+  });
+});
+
+describe("a defense glyph and the node labels", () => {
+  const DISC = 7 + 2;
+  /** Distance from a point to the nearest point of a box: zero inside it. */
+  const gap = (
+    p: { x: number; y: number },
+    box: { x0: number; y0: number; x1: number; y1: number },
+  ) =>
+    Math.hypot(
+      p.x - Math.min(box.x1, Math.max(box.x0, p.x)),
+      p.y - Math.min(box.y1, Math.max(box.y0, p.y)),
+    );
+  const nodeBoxes = Object.entries(layout.nodes).map(([id, n]) => ({
+    id,
+    box: nodeLabelBox(n.label, n.x, n.y),
+  }));
+
+  it("sizes a node label from its style: centred on x, NODE_LABEL_DY below the node, 6.3 px a character", () => {
+    const box = nodeLabelBox("Dispatcher WS", 420, 105);
+    expect(box.y0).toBe(105 + NODE_LABEL_DY);
+    expect((box.x0 + box.x1) / 2).toBe(420);
+    expect(box.x1 - box.x0).toBeCloseTo(13 * 6.3, 9);
+  });
+
+  it("keeps every glyph clear of every node label and conduit caption: all links, kinds and stack depths", () => {
+    const linked = network.links.filter((l) => (l.conduit ?? "") !== "");
+    const kinds = ["firewall", "diode", "ids"] as const;
+    const base = createWorld(network, 1);
+    for (const link of linked) {
+      for (const kind of kinds) {
+        for (const depth of [1, 2, 3]) {
+          const defenses = Array.from({ length: depth }, (_, i) => ({
+            id: `d${i}`,
+            kind,
+            link: link.id,
+            conduit: link.conduit ?? "",
+            direction: kind === "diode" ? ("a-to-b" as const) : ("" as const),
+            allow: [],
+            placedAt: 1,
+            activeFrom: 1,
+          }));
+          const world = { ...base, tick: 50, defenses };
+          const glyphs = buildView(world, ctx).defenses;
+          expect(glyphs).toHaveLength(depth);
+          for (const g of glyphs) {
+            for (const { id, box } of nodeBoxes) {
+              expect(
+                gap(g, box),
+                `${kind} x${depth} on ${link.id} vs label of ${id}`,
+              ).toBeGreaterThan(DISC);
+            }
+            for (const mark of ctx.conduitMarks) {
+              expect(
+                gap(g, conduitLabelBox(mark)),
+                `${kind} x${depth} on ${link.id} vs ${mark.id}`,
+              ).toBeGreaterThan(DISC);
+            }
+          }
+          for (const [i, g] of glyphs.entries()) {
+            for (const other of glyphs.slice(i + 1)) {
+              expect(Math.hypot(g.x - other.x, g.y - other.y)).toBeGreaterThanOrEqual(2 * 7 + 4);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("keeps a firewall placed on the Corp-DMZ conduit off the Dispatcher WS label", () => {
+    // The real placement path, as in the report: one firewall on the conduit, drawn on every member link.
+    const world = worldWith(
+      [place(1, { type: "defense.place", kind: "firewall", on: { conduit: "c-corp-dmz" } })],
+      1 + DEFENSE_PLACEMENT_LATENCY_TICKS + 2,
+    );
+    const glyphs = buildView(world, ctx).defenses;
+    const node = layout.nodes["corp-ws-dispatch"];
+    if (!node) throw new Error("no layout for the dispatcher workstation");
+    expect(glyphs.length).toBeGreaterThan(0);
+    for (const glyph of glyphs) {
+      expect(gap(glyph, nodeLabelBox(node.label, node.x, node.y))).toBeGreaterThan(DISC);
     }
   });
 });

@@ -118,6 +118,13 @@ interface DrawBlock {
   station: boolean;
 }
 
+interface LabelBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 /** Static, per-content data for buildView. Built once, never changes. */
 export interface ViewContext {
   index: Index;
@@ -129,6 +136,8 @@ export interface ViewContext {
    * the caption always sits on a line the conduit really has. `link` is that link's id.
    */
   conduitMarks: { id: string; label: string; x: number; y: number; link: string }[];
+  /** Every text box on the map a defense glyph must keep off: node labels and conduit captions. */
+  labelBoxes: LabelBox[];
   zones: LineInstance[];
   blocks: Map<string, Polyline>;
   drawBlocks: DrawBlock[];
@@ -247,6 +256,10 @@ export function createViewContext(content: Content, index: Index, layout: Layout
     links,
     linkById,
     conduitMarks,
+    labelBoxes: [
+      ...Object.values(layout.nodes).map((n) => nodeLabelBox(n.label, n.x, n.y)),
+      ...conduitMarks.map(conduitLabelBox),
+    ],
     zones,
     blocks,
     drawBlocks,
@@ -304,6 +317,25 @@ export function conduitLabelBox(mark: { label: string; x: number; y: number }): 
   return { x0: mark.x - width / 2, y0: top, x1: mark.x + width / 2, y1: top + 9 };
 }
 
+/** How far below a node its label sits, in map units; labels.ts places the label with it. */
+export const NODE_LABEL_DY = 15;
+
+/**
+ * The box a node label covers, in map units. The numbers are its style in style.css
+ * (`.lbl-node`): 10.5 px monospace without letter-spacing, so each character takes about
+ * 6.3 px (0.6 x 10.5), one line 10.5 px high, drawn at one CSS pixel per map unit, centred
+ * on x (translateX(-50%)) with its top at y + NODE_LABEL_DY.
+ */
+export function nodeLabelBox(
+  label: string,
+  x: number,
+  y: number,
+): { x0: number; y0: number; x1: number; y1: number } {
+  const width = label.length * 6.3;
+  const top = y + NODE_LABEL_DY;
+  return { x0: x - width / 2, y0: top, x1: x + width / 2, y1: top + 10.5 };
+}
+
 const DEFENSE_GLYPH_RADIUS = 7;
 /** Defense glyphs stay this far from a link's middle, where its conduit caption sits. */
 const LABEL_CLEARANCE = 40;
@@ -311,6 +343,49 @@ const LABEL_CLEARANCE = 40;
 const DEFENSE_STACK_STEP = 20;
 /** A glyph keeps this far from the end of its link, so it never sits on a machine. */
 const LINK_END_MARGIN = 12;
+
+/** How many slots of the alternating sequence are tried before the scan along the link starts. */
+const MAX_GLYPH_SLOTS = 16;
+/** The scan along a link tries a glyph position every this many map units. */
+const SCAN_STEP = 4;
+/** Extra room kept between a glyph disc and any label box. */
+const LABEL_MARGIN = 2;
+
+/** Whether a glyph at this point covers no label box and sits clear of every glyph already placed. */
+function glyphFits(at: Pt, boxes: readonly LabelBox[], placed: readonly DiscInstance[]): boolean {
+  const reach = DEFENSE_GLYPH_RADIUS + LABEL_MARGIN;
+  for (const box of boxes) {
+    const nx = Math.min(box.x1, Math.max(box.x0, at.x));
+    const ny = Math.min(box.y1, Math.max(box.y0, at.y));
+    if (Math.hypot(at.x - nx, at.y - ny) <= reach) return false;
+  }
+  const apart = 2 * DEFENSE_GLYPH_RADIUS + 4;
+  return placed.every((g) => Math.hypot(at.x - g.x, at.y - g.y) >= apart);
+}
+
+/**
+ * Where on a link of this length a glyph may sit, measured from its middle, most wanted first:
+ * the alternating slots (towards b first, LABEL_CLEARANCE out, then every DEFENSE_STACK_STEP),
+ * then every position the end margin allows, nearest the middle first. A short link clamps
+ * several slots to the same place, so duplicates are dropped.
+ */
+function alongCandidates(len: number): number[] {
+  const reach = Math.max(0, len / 2 - LINK_END_MARGIN);
+  const out: number[] = [];
+  const add = (along: number): void => {
+    if (!out.includes(along)) out.push(along);
+  };
+  for (let slot = 0; slot < MAX_GLYPH_SLOTS; slot++) {
+    const side = slot % 2 === 0 ? 1 : -1;
+    const wanted = LABEL_CLEARANCE + Math.floor(slot / 2) * DEFENSE_STACK_STEP;
+    add(side * Math.min(wanted, reach));
+  }
+  for (let d = 0; d <= reach; d += SCAN_STEP) {
+    add(d);
+    add(-d);
+  }
+  return out;
+}
 
 /**
  * The glyph of every placed defense, and the arrow of every diode. A firewall is a
@@ -337,14 +412,26 @@ function defenseGlyphs(
     const len = Math.hypot(dx, dy) || 1;
     const ux = dx / len;
     const uy = dy / len;
-    const slot = stacked.get(defense.link) ?? 0;
-    stacked.set(defense.link, slot + 1);
-    // Slots alternate either side of the middle (towards b first), clear of the caption.
-    const side = slot % 2 === 0 ? 1 : -1;
-    const wanted = LABEL_CLEARANCE + Math.floor(slot / 2) * DEFENSE_STACK_STEP;
-    const along = side * Math.min(wanted, Math.max(0, len / 2 - LINK_END_MARGIN));
-    const x = (link.a.x + link.b.x) / 2 + ux * along;
-    const y = (link.a.y + link.b.y) / 2 + uy * along;
+    const used = stacked.get(defense.link) ?? 0;
+    stacked.set(defense.link, used + 1);
+    // The first position that covers no label and no glyph already drawn. When the link has
+    // none, the plain next slot stays (a test proves the real map never needs that).
+    const middle = { x: (link.a.x + link.b.x) / 2, y: (link.a.y + link.b.y) / 2 };
+    const pointAlong = (along: number): Pt => ({
+      x: middle.x + ux * along,
+      y: middle.y + uy * along,
+    });
+    const candidates = alongCandidates(len);
+    const plain = candidates[Math.min(used, candidates.length - 1)] ?? 0;
+    let at = pointAlong(plain);
+    for (const along of candidates) {
+      const candidate = pointAlong(along);
+      if (glyphFits(candidate, ctx.labelBoxes, glyphs)) {
+        at = candidate;
+        break;
+      }
+    }
+    const { x, y } = at;
     const live = world.tick >= defense.activeFrom;
     const base = defense.kind === "ids" ? ALERT_COLORS.detection : DEFENSE_COLORS.barrier;
     const color = rgba(base, live ? 1 : 0.35);
