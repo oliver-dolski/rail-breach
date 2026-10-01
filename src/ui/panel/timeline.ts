@@ -3,7 +3,7 @@ import type { SimEvent } from "../../core/sim/events";
 import type { World } from "../../core/sim/world";
 import { h, setText } from "../dom";
 import { timeToDetect } from "./detect";
-import type { Names } from "./log";
+import { formatClock, type Names } from "./log";
 
 /**
  * The two-lane timeline: what the attacker did on one lane and what the defenders noticed
@@ -12,6 +12,10 @@ import type { Names } from "./log";
  * lanes (and still growing while nothing has been noticed). It reads the event stream and
  * two clock fields of a snapshot; it never writes to the world, and a run started over or
  * a scenario switched clears it.
+ *
+ * The lanes do not span the whole show: they span the attack (see `axisTicks`), so the
+ * first seconds of a chain are spread across the lane instead of piling into its left edge,
+ * and marks of one lane never sit closer than MIN_GAP_PERMILLE.
  */
 
 export type Lane = "attacker" | "detection";
@@ -25,7 +29,7 @@ export interface Mark {
   kind: MarkKind;
   /** Ticks since the start of the show. */
   tick: number;
-  /** Position along the lane in permille of the show's length. */
+  /** Position along the lane in permille of its span (`axisTicks`), kept MIN_GAP_PERMILLE from its neighbours. */
   permille: number;
   /** The technique (current id, and the pre-v19 one when there is one), or "" for a breach. */
   technique: string;
@@ -46,9 +50,20 @@ export interface TimelineModel {
   attacker: Mark[];
   detection: Mark[];
   dwell: Dwell | undefined;
-  /** The clock, in permille of the show's length. */
+  /** The clock, in permille of the lane's span (`axisTicks`); it sits at the right edge after the attack. */
   nowPermille: number;
+  /** How many ticks the lane spans from the start of the show: the attack, not the whole show. */
+  axisTicks: number;
 }
+
+/**
+ * The shortest stretch a lane spans: 30 s at 10 ticks a second (TICKS_PER_SECOND in core,
+ * which the UI does not import; a test pins the equality).
+ */
+export const MIN_AXIS_TICKS = 300;
+
+/** The least distance between two marks of one lane, in permille, so that dots do not merge. */
+export const MIN_GAP_PERMILLE = 50;
 
 /** Effects that are only the intruder getting around; the timeline marks what they did, not that. */
 const QUIET_EFFECTS: readonly EffectKind[] = ["foothold", "discover"];
@@ -65,6 +80,28 @@ const EFFECT_TEXT: Record<EffectKind, string> = {
 
 const clampPermille = (tick: number, length: number): number =>
   length <= 0 ? 0 : Math.max(0, Math.min(1000, Math.round((tick * 1000) / length)));
+
+/**
+ * Spreads marks (already in tick order) so that neighbours are at least MIN_GAP_PERMILLE
+ * apart: a forward pass pushes each mark past the one before it, then a backward pass from
+ * the last mark (held at 1000) pulls each back to make room, never below 0.
+ */
+function keepApart(marks: { permille: number }[]): void {
+  for (let i = 1; i < marks.length; i++) {
+    const mark = marks[i];
+    const before = marks[i - 1];
+    if (mark && before) mark.permille = Math.max(mark.permille, before.permille + MIN_GAP_PERMILLE);
+  }
+  const last = marks[marks.length - 1];
+  if (last) last.permille = Math.min(last.permille, 1000);
+  for (let i = marks.length - 2; i >= 0; i--) {
+    const mark = marks[i];
+    const after = marks[i + 1];
+    if (mark && after) {
+      mark.permille = Math.max(0, Math.min(mark.permille, after.permille - MIN_GAP_PERMILLE));
+    }
+  }
+}
 
 export class Timeline {
   private readonly raw: (Omit<Mark, "permille"> & { order: number })[] = [];
@@ -136,20 +173,34 @@ export class Timeline {
 
   /**
    * The timeline as of `world`, over a show that lasts `lengthTicks` from `startTick`. The
-   * dwell is read off the world's own clocks: first action to first alert, or to now while
-   * nothing has been noticed.
+   * lanes span the attack: at least MIN_AXIS_TICKS, and a quarter more than the latest mark
+   * or closed dwell, never more than the show. The dwell is read off the world's own
+   * clocks: first action to first alert, or to now while nothing has been noticed.
    */
   model(
     world: Pick<World, "tick" | "firstActionTick" | "detectedAt">,
     startTick: number,
     lengthTicks: number,
   ): TimelineModel {
-    const place = (lane: Lane): Mark[] =>
-      this.raw
+    const closedEnd = world.firstActionTick > 0 && world.detectedAt > 0;
+    const latest = Math.max(
+      0,
+      ...this.raw.map((m) => m.tick),
+      closedEnd ? world.detectedAt - startTick : 0,
+    );
+    const axisTicks =
+      lengthTicks <= 0
+        ? 0
+        : Math.min(lengthTicks, Math.max(MIN_AXIS_TICKS, Math.ceil((latest * 5) / 4)));
+
+    const place = (lane: Lane): Mark[] => {
+      const marks = this.raw
         .filter((m) => m.lane === lane)
-        .map((m) => ({ ...m, permille: clampPermille(m.tick, lengthTicks) }))
-        .sort((a, b) => a.tick - b.tick || a.order - b.order)
-        .map(({ order: _order, ...mark }) => mark);
+        .map((m) => ({ ...m, permille: clampPermille(m.tick, axisTicks) }))
+        .sort((a, b) => a.tick - b.tick || a.order - b.order);
+      keepApart(marks);
+      return marks.map(({ order: _order, ...mark }) => mark);
+    };
 
     let dwell: Dwell | undefined;
     if (world.firstActionTick > 0) {
@@ -160,15 +211,16 @@ export class Timeline {
         toTick,
         ticks: toTick - world.firstActionTick,
         open,
-        fromPermille: clampPermille(world.firstActionTick - startTick, lengthTicks),
-        toPermille: clampPermille(toTick - startTick, lengthTicks),
+        fromPermille: clampPermille(world.firstActionTick - startTick, axisTicks),
+        toPermille: clampPermille(toTick - startTick, axisTicks),
       };
     }
     return {
       attacker: place("attacker"),
       detection: place("detection"),
       dwell,
-      nowPermille: clampPermille(world.tick - startTick, lengthTicks),
+      nowPermille: clampPermille(world.tick - startTick, axisTicks),
+      axisTicks,
     };
   }
 }
@@ -242,7 +294,10 @@ export function createTimelineView(doc: Document): TimelineView {
         if (band.style.width !== width) band.style.width = width;
         band.setAttribute("data-open", model.dwell.open ? "true" : "false");
       }
-      setText(dwellText, `Time to detect: ${timeToDetect(world)}`);
+      setText(
+        dwellText,
+        `Time to detect: ${timeToDetect(world)}. The lanes span the first ${formatClock(model.axisTicks)}.`,
+      );
     },
   };
 }

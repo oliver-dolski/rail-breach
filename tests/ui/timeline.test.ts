@@ -2,9 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { layout } from "../../src/content/layout";
 import { techniques } from "../../src/content/techniques";
+import { TICKS_PER_SECOND } from "../../src/core/sim/constants";
 import type { SimEvent } from "../../src/core/sim/events";
 import { createNames, EventLog } from "../../src/ui/panel/log";
-import { createTimelineView, Timeline } from "../../src/ui/panel/timeline";
+import {
+  createTimelineView,
+  MIN_AXIS_TICKS,
+  MIN_GAP_PERMILLE,
+  Timeline,
+} from "../../src/ui/panel/timeline";
 
 const names = createNames(layout, techniques);
 const START = 100;
@@ -59,7 +65,9 @@ describe("the two-lane timeline", () => {
     expect(model.detection.map((m) => m.tick)).toEqual([200]);
     expect(model.detection.map((m) => m.kind)).toEqual(["alert"]);
     expect(model.detection.every((m) => m.lane === "detection")).toBe(true);
-    expect(model.attacker.map((m) => m.permille)).toEqual([50, 100, 160]);
+    // The lane spans the attack (300 ticks, the minimum), not the 1000-tick show: ticks 50, 100, 160.
+    expect(model.axisTicks).toBe(300);
+    expect(model.attacker.map((m) => m.permille)).toEqual([167, 333, 533]);
   });
 
   it("shades the dwell from the first action to the first detection: detectedAt minus firstActionTick", () => {
@@ -67,8 +75,9 @@ describe("the two-lane timeline", () => {
     tl.ingest(stream(), START);
     const { dwell } = tl.model({ tick: 400, firstActionTick: 150, detectedAt: 300 }, START, LENGTH);
     expect(dwell).toMatchObject({ fromTick: 150, toTick: 300, ticks: 150, open: false });
-    expect(dwell?.fromPermille).toBe(50);
-    expect(dwell?.toPermille).toBe(200);
+    // Over the 300-tick attack axis: tick 50 and tick 200.
+    expect(dwell?.fromPermille).toBe(167);
+    expect(dwell?.toPermille).toBe(667);
   });
 
   it("keeps the dwell open and growing while nothing has been noticed", () => {
@@ -86,7 +95,8 @@ describe("the two-lane timeline", () => {
     const model = tl.model({ tick: 130, firstActionTick: 0, detectedAt: 0 }, START, LENGTH);
     expect(model.dwell).toBeUndefined();
     expect(model.attacker).toEqual([]);
-    expect(model.nowPermille).toBe(30);
+    // Tick 30 of the 300-tick axis.
+    expect(model.nowPermille).toBe(100);
   });
 
   it("tags each mark with the technique, current id and the pre-v19 one", () => {
@@ -115,6 +125,63 @@ describe("the two-lane timeline", () => {
     const model = tl.model({ tick: START, firstActionTick: 0, detectedAt: 0 }, START, LENGTH);
     expect(model.attacker[0]?.permille).toBe(0);
     expect(model.detection[0]?.permille).toBe(1000);
+  });
+});
+
+describe("the lane's span and spacing", () => {
+  it("the minimum span is 30 seconds", () => {
+    expect(MIN_AXIS_TICKS).toBe(30 * TICKS_PER_SECOND);
+  });
+
+  it("marks of a phishing-like chain stay apart, over an axis that spans the attack", () => {
+    const tl = new Timeline(names);
+    const ticks = [10, 50, 76, 116, 152, 180, 180];
+    tl.ingest(
+      ticks.map((t, i) => started(START + t, "T0886", "dmz-relay", i)),
+      START,
+    );
+    const model = tl.model({ tick: START + 300, firstActionTick: 0, detectedAt: 0 }, START, 1269);
+    expect(model.axisTicks).toBe(300);
+    expect(model.attacker).toHaveLength(ticks.length);
+    const spots = model.attacker.map((m) => m.permille);
+    for (const p of spots) expect(p).toBeGreaterThanOrEqual(0);
+    for (const p of spots) expect(p).toBeLessThanOrEqual(1000);
+    for (let i = 1; i < spots.length; i++) {
+      expect((spots[i] ?? 0) - (spots[i - 1] ?? 0)).toBeGreaterThanOrEqual(MIN_GAP_PERMILLE);
+    }
+  });
+
+  it("pulls marks back from the right edge instead of piling them on it", () => {
+    const tl = new Timeline(names);
+    tl.ingest(
+      [0, 1, 2, 3].map((i) => started(START + 5000 + i, "T0886", "dmz-relay", i)),
+      START,
+    );
+    const model = tl.model({ tick: START, firstActionTick: 0, detectedAt: 0 }, START, 1000);
+    expect(model.axisTicks).toBe(1000);
+    expect(model.attacker.map((m) => m.permille)).toEqual([850, 900, 950, 1000]);
+  });
+
+  it("grows with the attack and never beyond the show", () => {
+    const tl = new Timeline(names);
+    const world = { tick: START, firstActionTick: 0, detectedAt: 0 };
+    tl.ingest([started(START + 600, "T0886", "dmz-relay")], START);
+    expect(tl.model(world, START, 5000).axisTicks).toBe(750);
+    expect(tl.model(world, START, 400).axisTicks).toBe(400);
+    expect(tl.model(world, START, 0).axisTicks).toBe(0);
+  });
+
+  it("holds the clock and an open dwell at the right edge once the attack is over", () => {
+    const tl = new Timeline(names);
+    tl.ingest([started(START + 100, "T0865", "corp-ws-dispatch")], START);
+    const model = tl.model(
+      { tick: START + 900, firstActionTick: START + 100, detectedAt: 0 },
+      START,
+      1269,
+    );
+    expect(model.axisTicks).toBe(300);
+    expect(model.nowPermille).toBe(1000);
+    expect(model.dwell?.toPermille).toBe(1000);
   });
 });
 
@@ -200,10 +267,13 @@ describe("the timeline on the page", () => {
       "tl-mark tl-impact",
     ]);
     expect(detection.map((e) => e.attrs.class)).toEqual(["tl-mark tl-alert"]);
-    expect(attacker.map((e) => e.style.left)).toEqual(["5%", "10%", "16%"]);
-    expect(byId.get("tl-band-attacker")?.style.width).toBe("15%");
+    // Permille of the 300-tick attack axis.
+    expect(attacker.map((e) => e.style.left)).toEqual(["16.7%", "33.3%", "53.3%"]);
+    expect(byId.get("tl-band-attacker")?.style.width).toBe("50%");
     expect(byId.get("tl-band-detection")?.hidden).toBe(false);
-    expect(byId.get("tl-dwell")?.textContent).toBe("Time to detect: after 15 s");
+    expect(byId.get("tl-dwell")?.textContent).toBe(
+      "Time to detect: after 15 s. The lanes span the first 00:30.",
+    );
   });
 
   it("writes a hostile string from an event field as inert text, never as markup", () => {
