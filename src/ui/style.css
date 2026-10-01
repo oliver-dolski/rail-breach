@@ -669,8 +669,36 @@ button.plain:disabled {
     min-height: 100vh;
   }
 
+  /*
+   * The view switch stands above the map instead of over it, so it covers no zone label
+   * or machine. The stage becomes a grid: the switch in row 1, and the canvas, the labels
+   * and the still in one cell of row 2, so they keep sharing one box and the labels stay
+   * aligned with the canvas.
+   */
   .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    aspect-ratio: auto;
+  }
+
+  .map,
+  .labels,
+  .fallback {
+    position: relative;
+    inset: auto;
+    grid-row: 2;
+    grid-column: 1;
+    width: 100%;
+    height: auto;
     aspect-ratio: 16 / 9;
+  }
+
+  /* `.stage >` outranks the base .view-switch rule, which is written further down. */
+  .stage > .view-switch {
+    position: static;
+    grid-row: 1;
+    max-width: none;
+    margin: 8px 10px 4px;
   }
 
   .panel {
