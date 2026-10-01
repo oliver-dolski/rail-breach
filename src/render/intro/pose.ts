@@ -29,13 +29,15 @@ const DEG = Math.PI / 180;
 export const START_TILT = 56 * DEG;
 export const TILT_DRIFT = 1.2 * DEG;
 /** Where the stack sits left of the middle at the start, as a share of the canvas width. */
-export const START_SHIFT = 0;
+export const START_SHIFT = -0.05;
+/** The same up or down, in canvas heights (negative is up): perspective makes the stack bottom-heavy. */
+export const START_SHIFT_Y = -0.05;
 /** Distance of the eye from the sheet, in canvas heights: the perspective is mild. */
-export const FOCAL_HEIGHTS = 2.4;
+export const FOCAL_HEIGHTS = 3;
 /** The gap between two packed layers on the sheet, in map units. */
 export const STACK_GAP = 14;
 /** Distance between two layers along the plane normal, in map units. */
-export const STACK_DEPTH = 0;
+export const STACK_DEPTH = 50;
 
 export interface IntroPose {
   /** Tilt about the horizontal axis through the sheet centre, radians; 0 is the flat board. */
@@ -60,6 +62,8 @@ export interface IntroPose {
   labelsAlpha: number;
   /** The stack's shift to the side, in canvas widths; 0 once the fold ends. */
   shiftX: number;
+  /** The stack's shift up or down, in canvas heights; 0 once the fold ends. */
+  shiftY: number;
   /** How brightly each layer's border flares right now. */
   flares: readonly number[];
 }
@@ -149,12 +153,44 @@ export function foldTime(tMs: number): number {
   return clamp01((tMs - FALL_END_MS) / (FOLD_END_MS - FALL_END_MS));
 }
 
-/** The scale the stack starts at: small enough that the tilted stack fits the canvas. */
-export function startScale(_aspect: number): number {
-  return 0.8;
+/**
+ * The scale the stack starts at, by stage aspect (width over height): small enough that the
+ * tilted stack fits the canvas with margin. A wide canvas is limited by its height, a square one
+ * by its width, so the scale grows from 16:9 toward 1:1.
+ */
+const START_SCALES: readonly (readonly [number, number])[] = [
+  [1, 0.72],
+  [4 / 3, 0.7],
+  [16 / 9, 0.665],
+];
+
+export function startScale(aspect: number): number {
+  const first = START_SCALES[0] as readonly [number, number];
+  const last = START_SCALES[START_SCALES.length - 1] as readonly [number, number];
+  if (aspect <= first[0]) return first[1];
+  if (aspect >= last[0]) return last[1];
+  for (let i = 1; i < START_SCALES.length; i++) {
+    const [a1, s1] = START_SCALES[i] as readonly [number, number];
+    const [a0, s0] = START_SCALES[i - 1] as readonly [number, number];
+    if (aspect <= a1) return s0 + ((s1 - s0) * (aspect - a0)) / (a1 - a0);
+  }
+  return last[1];
 }
 
-const NO_FLARES: readonly number[] = Array.from({ length: LAYER_COUNT }, () => 0);
+/**
+ * How brightly layer `layer`'s border flares at tMs: one smooth rise and fall inside the layer's
+ * own slot, which starts 600 ms in and lasts 360 ms; the slots follow one another, so two layers
+ * are never lit at once and the rate stays under 3 flares a second.
+ */
+export function flareLevel(layer: number, tMs: number): number {
+  const start = FADE_IN_END_MS + FLARE_SLOT_MS * layer;
+  if (tMs <= start || tMs >= start + FLARE_SLOT_MS) return 0;
+  const s = Math.sin((Math.PI * (tMs - start)) / FLARE_SLOT_MS);
+  return s * s;
+}
+
+const flaresAt = (tMs: number): readonly number[] =>
+  Array.from({ length: LAYER_COUNT }, (_, layer) => flareLevel(layer, tMs));
 
 export function introPose(tMs: number, aspect: number): IntroPose {
   const t = Math.min(INTRO_MS, Math.max(0, tMs));
@@ -176,7 +212,8 @@ export function introPose(tMs: number, aspect: number): IntroPose {
     ambientAlpha: clamp01((e - 0.92) / 0.08),
     labelsAlpha: clamp01((t - FOLD_END_MS) / CROSSFADE_MS),
     shiftX: START_SHIFT * (1 - e),
-    flares: NO_FLARES,
+    shiftY: START_SHIFT_Y * (1 - e),
+    flares: flaresAt(t),
   };
 }
 
@@ -224,7 +261,10 @@ export function layerMatrix(
   m = multiply(translation(0, slot.dv * k * pose.separation, slot.dz * k * pose.separation), m);
   m = multiply(scaling(pose.scale, pose.scale, pose.scale), m);
   m = multiply(rotationX(pose.theta), m);
-  m = multiply(translation(cu + pose.shiftX * canvas.width, cv, 0), m);
+  m = multiply(
+    translation(cu + pose.shiftX * canvas.width, cv + pose.shiftY * canvas.height, 0),
+    m,
+  );
 
   const eye = FOCAL_HEIGHTS * canvas.height;
   const perspective = identity();
@@ -251,4 +291,81 @@ export function projectToClip(matrix: Float32Array, x: number, y: number): Proje
   const cy = (matrix[1] ?? 0) * x + (matrix[5] ?? 0) * y + (matrix[13] ?? 0);
   const w = (matrix[3] ?? 0) * x + (matrix[7] ?? 0) * y + (matrix[15] ?? 0);
   return { x: cx / w, y: cy / w, w };
+}
+
+export interface ScreenBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** A map rectangle through a layer matrix, as the box of its corners in canvas pixels (y down). */
+export function screenBox(matrix: Float32Array, rect: Rect, canvas: IntroCanvas): ScreenBox {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const [x, y] of [
+    [rect.x, rect.y],
+    [rect.x + rect.w, rect.y],
+    [rect.x, rect.y + rect.h],
+    [rect.x + rect.w, rect.y + rect.h],
+  ] as const) {
+    const p = projectToClip(matrix, x, y);
+    xs.push(((p.x + 1) / 2) * canvas.width);
+    ys.push(((1 - p.y) / 2) * canvas.height);
+  }
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+export interface Pt2 {
+  x: number;
+  y: number;
+}
+
+/** Samples in the falling packet's comet, head included. */
+export const COMET_SAMPLES = 6;
+/** Time between two samples of the comet. */
+export const COMET_LAG_MS = 40;
+
+/**
+ * The falling packet: its head and the samples behind it, in the space of the anchors (canvas
+ * pixels). The head starts above the top layer at 600 ms, crosses layer i at the middle of that
+ * layer's flare slot and leaves below the last layer at 2400 ms; between layers it is a straight
+ * fall. Outside that window there is no packet.
+ */
+export function packetPoints(
+  tMs: number,
+  anchors: readonly Pt2[],
+  samples = COMET_SAMPLES,
+  lagMs = COMET_LAG_MS,
+): Pt2[] {
+  const n = anchors.length;
+  if (n < 2 || tMs < FADE_IN_END_MS || tMs > FALL_END_MS) return [];
+  const first = anchors[0] as Pt2;
+  const second = anchors[1] as Pt2;
+  const last = anchors[n - 1] as Pt2;
+  const before = anchors[n - 2] as Pt2;
+  const times = [FADE_IN_END_MS];
+  const points: Pt2[] = [
+    { x: first.x - (second.x - first.x) / 2, y: first.y - (second.y - first.y) / 2 },
+  ];
+  anchors.forEach((a, i) => {
+    times.push(FADE_IN_END_MS + FLARE_SLOT_MS * i + FLARE_SLOT_MS / 2);
+    points.push(a);
+  });
+  times.push(FALL_END_MS);
+  points.push({ x: last.x + (last.x - before.x) / 2, y: last.y + (last.y - before.y) / 2 });
+
+  const at = (tau: number): Pt2 => {
+    const t = Math.min(FALL_END_MS, Math.max(FADE_IN_END_MS, tau));
+    let i = 1;
+    while (i < times.length - 1 && (times[i] as number) < t) i++;
+    const t0 = times[i - 1] as number;
+    const t1 = times[i] as number;
+    const p0 = points[i - 1] as Pt2;
+    const p1 = points[i] as Pt2;
+    const f = (t - t0) / (t1 - t0);
+    return { x: p0.x + (p1.x - p0.x) * f, y: p0.y + (p1.y - p0.y) * f };
+  };
+  return Array.from({ length: samples }, (_, k) => at(tMs - k * lagMs));
 }

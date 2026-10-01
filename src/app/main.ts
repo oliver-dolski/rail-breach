@@ -12,6 +12,8 @@ import { CameraTrack } from "../render/camera";
 import { AlertFlashes } from "../render/flashes";
 import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
+import { INTRO_LEVEL_NAMES, introLevels } from "../render/intro/levels";
+import { partitionView } from "../render/intro/partition";
 import { INTRO_MS, introPose } from "../render/intro/pose";
 import { ALERT_COLORS, cssColor, DEFENSE_COLORS, SIGNAL_COLORS } from "../render/palette";
 import { ParticleRing, packetParticles } from "../render/particleRing";
@@ -327,11 +329,41 @@ function boot(): void {
   const { search } = window.location;
   const labelsEl = byId("labels");
   let intro: IntroClock | undefined;
+  const namesEl = byId("intro-names");
+  let levels: ReturnType<typeof introLevels> = [];
+  let levelNames: HTMLSpanElement[] = [];
+  /** Name widths in CSS pixels, measured once the display face is in. */
+  let nameWidths: number[] = [];
   /** Puts the page back to normal: labels shown, intro marked done. Safe to call twice. */
   const finishIntro = (): void => {
     intro?.end();
     labelsEl.style.opacity = "";
+    for (const el of levelNames) el.style.opacity = "0";
     html.setAttribute("data-intro", "done");
+  };
+  /**
+   * Puts each level name beside its projected layer, in one column at the right of the stack. A
+   * column that would run off the stage moves in, over the empty right end of the plates, and the
+   * names then sit at the top of their plate so they stay clear of the zones.
+   */
+  const placeNames = (
+    boxes: readonly { x0: number; y0: number; x1: number; y1: number }[],
+    alpha: number,
+  ): void => {
+    if (nameWidths.length !== levelNames.length)
+      nameWidths = levelNames.map((el) => el.offsetWidth);
+    const widest = Math.max(0, ...nameWidths);
+    const stageWidth = canvas.clientWidth;
+    const right = Math.max(0, ...boxes.map((b) => b.x1 / dpr));
+    const column = Math.min(right + 14, stageWidth - widest - 10);
+    const inside = column < right + 14;
+    levelNames.forEach((el, i) => {
+      const box = boxes[i];
+      if (!box) return;
+      const top = inside ? box.y0 / dpr + 6 : (box.y0 + box.y1) / 2 / dpr - 10;
+      el.style.transform = `translate(${Math.round(column)}px, ${Math.round(top)}px)`;
+      el.style.opacity = String(alpha);
+    });
   };
   const endIntro = (): void => {
     if (intro?.running()) finishIntro();
@@ -348,6 +380,17 @@ function boot(): void {
   ) {
     intro = createIntro(INTRO_MS);
     camera.reset();
+    levels = introLevels(network, layout);
+    void document.fonts.ready.then(() => {
+      nameWidths = [];
+    });
+    levelNames = INTRO_LEVEL_NAMES.map((text) => {
+      const el = document.createElement("span");
+      el.className = "intro-name";
+      el.textContent = text;
+      namesEl.append(el);
+      return el;
+    });
     labelsEl.style.opacity = "0";
     html.setAttribute("data-intro", "running");
     html.setAttribute("data-intro-played", "");
@@ -468,7 +511,14 @@ function boot(): void {
       const elapsed = intro.elapsedMs();
       if (intro.phase() === "layers") {
         try {
-          renderer.drawIntro(view, elapsed);
+          const pose = introPose(elapsed, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+          const boxes = renderer.drawIntro(view, {
+            elapsedMs: elapsed,
+            levels,
+            partition: partitionView(view, viewContext, levels),
+            ctx: viewContext,
+          });
+          placeNames(boxes, pose.namesAlpha);
         } catch {
           // Any trouble in the intro path ends it; the board is drawn at once.
           finishIntro();

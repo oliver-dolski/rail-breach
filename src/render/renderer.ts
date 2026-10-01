@@ -8,6 +8,8 @@ import { disposeGL, type GlResources, initGL } from "./gl/context";
 import { disposePost, runBloom, sizePost } from "./gl/post";
 import {
   blendAdditive,
+  blendPremultiplied,
+  drawDiscs,
   drawGround,
   type Frame,
   HDR_EMISSIVE,
@@ -23,6 +25,10 @@ import {
   type RenderTier,
   tiersFrom,
 } from "./gl/tier";
+import { bridgesToScreen } from "./intro/bridges";
+import type { IntroLevel } from "./intro/levels";
+import type { PartitionedView } from "./intro/partition";
+import { layerView } from "./intro/plates";
 import {
   FOLD_END_MS,
   INTRO_MS,
@@ -30,23 +36,38 @@ import {
   introPose,
   introSheet,
   layerMatrix,
+  packetPoints,
+  projectToClip,
+  type ScreenBox,
+  screenBox,
 } from "./intro/pose";
 import { drawMap } from "./layers/map";
 import { drawParticles } from "./layers/particles";
-import { NEUTRAL } from "./palette";
+import { ALERT_COLORS, NEUTRAL, SHAPE } from "./palette";
 import {
   ambientParticles,
   PARTICLE_FLOATS,
   type ParticleRing,
   writeParticle,
 } from "./particleRing";
-import type { RenderView } from "./view";
+import type { DiscInstance, RenderView, ViewContext } from "./view";
 
 export interface RendererOptions {
   reducedMotion: boolean;
   /** The capture build: the tier is fixed at what the GPU offers, nothing steps it down. */
   capture: boolean;
 }
+
+/** What the intro needs of the page for one frame. */
+export interface IntroFrame {
+  elapsedMs: number;
+  levels: readonly IntroLevel[];
+  partition: PartitionedView;
+  ctx: ViewContext;
+}
+
+/** Radius of the falling packet's head, as a share of the canvas height. */
+const PACKET_RADIUS = 0.0085;
 
 export interface Geometry {
   /** Device pixels per map unit. */
@@ -249,10 +270,11 @@ export class MapRenderer {
    * the ambient traffic once the layers have settled, then the same bloom as the live board.
    * The camera is at home here. The simulation is paused, so the view is the first world.
    */
-  drawIntro(view: RenderView, elapsedMs: number): void {
+  drawIntro(view: RenderView, intro: IntroFrame): ScreenBox[] {
     const res = this.res;
-    if (!res || this.gl.isContextLost()) return;
+    if (!res || this.gl.isContextLost()) return [];
     const { gl } = this;
+    const { elapsedMs, levels, partition, ctx } = intro;
     const canvas = { width: this.width, height: this.height };
     const pose = introPose(elapsedMs, this.width / this.height);
     const emissive = this.emissiveFor(res);
@@ -262,44 +284,121 @@ export class MapRenderer {
       simTime: view.phase / TICKS_PER_SECOND,
       emissive,
     };
-    if (!this.beginScene(res, flat, view.ground)) return;
+    const sheet = this.introSheetOf(levels);
+    const matrices = levels.map((_, i) => layerMatrix(pose, i, this.home, canvas, sheet));
+    const boxes = levels.map((level, i) =>
+      screenBox(matrices[i] as Float32Array, level.plate, canvas),
+    );
+    if (!this.beginScene(res, flat, view.ground)) return boxes;
 
-    const sheet = this.introSheetOf();
-    const layer: Frame = {
-      ...flat,
-      pxPerUnit: this.home.scale * pose.scale,
-      matrix: layerMatrix(pose, 0, this.home, canvas, sheet),
-      alpha: pose.fadeIn,
-    };
-    drawMap(gl, res.prims, view, layer);
+    // Back to front, the bottom of the stack first: painter's order, no depth buffer.
+    for (let i = levels.length - 1; i >= 0; i--) {
+      const layer: Frame = {
+        ...flat,
+        pxPerUnit: this.home.scale * pose.scale,
+        matrix: matrices[i],
+        alpha: pose.fadeIn,
+      };
+      const level = levels[i] as IntroLevel;
+      drawMap(gl, res.prims, layerView(partition.layers[i] as RenderView, level, pose), layer);
+    }
+
+    // What runs between the layers is drawn in canvas pixels, ends carried by their own layers.
+    if (pose.bridgesAlpha > 0) {
+      const screen = bridgesToScreen(partition.bridges, ctx, levels, matrices, canvas, pose);
+      const pixels: Frame = {
+        view: viewUniform({ scale: 1, ox: 0, oy: 0 }, this.width, this.height),
+        pxPerUnit: 1,
+        simTime: flat.simTime,
+        emissive,
+      };
+      drawMap(
+        gl,
+        res.prims,
+        {
+          ...partition.bridges,
+          links: screen.links,
+          trail: screen.trail,
+          alerts: screen.alerts,
+          defenseArrows: screen.arrows,
+          defenses: screen.discs,
+          nodes: [],
+          halos: [],
+        },
+        pixels,
+      );
+    }
 
     if (pose.ambientAlpha > 0) {
       // The ambient traffic runs on the show clock less what the intro still has to play, so it
       // is already moving when it fades in and is exactly in step when the live board takes over.
+      const settled = introPose(FOLD_END_MS, this.width / this.height);
       const ambient: Frame = {
         ...flat,
         simTime: flat.simTime - (INTRO_MS - elapsedMs) / 1000,
-        matrix: layerMatrix(
-          introPose(FOLD_END_MS, this.width / this.height),
-          0,
-          this.home,
-          canvas,
-          sheet,
-        ),
+        matrix: layerMatrix(settled, 0, this.home, canvas, sheet),
         alpha: pose.ambientAlpha,
       };
       this.drawAmbient(gl, res.prims, ambient);
     }
+
+    this.drawPacket(gl, res, elapsedMs, levels, matrices, sheet, emissive);
     if (res.post) runBloom(gl, res.post, bloomSettings(res.tier, this.reducedMotion));
+    return boxes;
   }
 
-  private introSheetCache: IntroSheet | undefined;
+  /** The packet that falls through the layers: a hot head and a comet, in attacker magenta. */
+  private drawPacket(
+    gl: WebGL2RenderingContext,
+    res: GlResources,
+    elapsedMs: number,
+    levels: readonly IntroLevel[],
+    matrices: readonly Float32Array[],
+    sheet: IntroSheet,
+    emissive: readonly [number, number],
+  ): void {
+    const canvas = { width: this.width, height: this.height };
+    const anchors = levels.map((level, i) => {
+      const p = projectToClip(
+        matrices[i] as Float32Array,
+        sheet.width / 2,
+        level.plate.y + level.plate.h / 2,
+      );
+      return { x: ((p.x + 1) / 2) * canvas.width, y: ((1 - p.y) / 2) * canvas.height };
+    });
+    const points = packetPoints(elapsedMs, anchors);
+    if (points.length === 0) return;
+    const unit = Math.max(3, this.height * PACKET_RADIUS);
+    const [r, g, b] = ALERT_COLORS.attacker;
+    const discs: DiscInstance[] = points.map((p, k) => ({
+      x: p.x,
+      y: p.y,
+      radius: unit * (1 - 0.13 * k),
+      shape: SHAPE.disc,
+      glow: k === 0 ? unit * 2.4 : unit * 1.2,
+      color: [r, g, b, k === 0 ? 1 : 0.62 * (1 - k / points.length)],
+    }));
+    blendPremultiplied(gl);
+    drawDiscs(gl, res.prims, discs, {
+      view: viewUniform({ scale: 1, ox: 0, oy: 0 }, this.width, this.height),
+      pxPerUnit: 1,
+      simTime: 0,
+      emissive,
+    });
+  }
 
-  private introSheetOf(): IntroSheet {
-    this.introSheetCache ??= introSheet(
-      [{ x: 0, y: 0, w: this.layout.width, h: this.layout.height }],
-      this.layout,
-    );
-    return this.introSheetCache;
+  private introSheetCache: { levels: readonly IntroLevel[]; sheet: IntroSheet } | undefined;
+
+  private introSheetOf(levels: readonly IntroLevel[]): IntroSheet {
+    if (this.introSheetCache?.levels !== levels) {
+      this.introSheetCache = {
+        levels,
+        sheet: introSheet(
+          levels.map((l) => l.plate),
+          this.layout,
+        ),
+      };
+    }
+    return this.introSheetCache.sheet;
   }
 }
