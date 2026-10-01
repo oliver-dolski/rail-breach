@@ -41,19 +41,19 @@ export function selectorMatches(
   return true;
 }
 
-/** The shortest permitted path from any of `starts` (in id order) to `target`. */
+/** Whether a payload may cross one link in one direction: the question a path search asks. */
+type Permit = (link: LinkDef, from: string, to: string) => boolean;
+
+/** The shortest path from any of `starts` (in id order) to `target` that `permit` allows. */
 function bestPath(
-  world: World,
   index: Index,
   starts: readonly string[],
   target: string,
-  protocol: Protocol,
+  permit: Permit,
 ): NetPath | null {
   let best: NetPath | null = null;
   for (const start of starts) {
-    const path = findPath(index.net, start, target, (link, from, to) =>
-      linkPermits(link, protocol, from, to, world, world.tick),
-    );
+    const path = findPath(index.net, start, target, permit);
     if (path !== null && (best === null || path.links.length < best.links.length)) best = path;
   }
   return best;
@@ -62,6 +62,11 @@ function bestPath(
 interface Evaluation {
   reasons: string[];
   path: NetPath | null;
+  /**
+   * True when a launch was refused for want of a permitted path although one exists
+   * without the defenses in force: a firewall or diode is what closed it.
+   */
+  closedByDefense: boolean;
 }
 
 /** Checks every precondition and collects each failure, so a refusal is explained whole. */
@@ -73,6 +78,7 @@ export function evaluate(
 ): Evaluation {
   const reasons: string[] = [];
   let path: NetPath | null = null;
+  let closedByDefense = false;
   const state = world.nodes.find((n) => n.id === target);
 
   for (const pre of def.pre as readonly Precondition[]) {
@@ -82,9 +88,24 @@ export function evaluate(
           .filter((n) => (pre.from === "external" ? n.kind === "external" : n.integrity >= 1))
           .map((n) => n.id);
         const origin = pre.from === "external" ? "the outside" : "a compromised node";
-        path = starts.length === 0 ? null : bestPath(world, index, starts, target, pre.protocol);
-        if (path === null)
+        path =
+          starts.length === 0
+            ? null
+            : bestPath(index, starts, target, (link, from, to) =>
+                linkPermits(link, pre.protocol, from, to, world, world.tick),
+              );
+        if (path === null) {
           reasons.push(`no permitted ${pre.protocol} path from ${origin} to ${target}`);
+          // Only on a refusal: would the same search succeed with no defense in force?
+          if (
+            starts.length > 0 &&
+            bestPath(index, starts, target, (link, from, to) =>
+              linkAllows(link, pre.protocol, from, to, { defenses: [] }, world.tick),
+            ) !== null
+          ) {
+            closedByDefense = true;
+          }
+        }
         break;
       }
       case "targetFoothold":
@@ -95,7 +116,7 @@ export function evaluate(
         break;
     }
   }
-  return { reasons, path };
+  return { reasons, path, closedByDefense };
 }
 
 /**
@@ -114,6 +135,9 @@ export function launchTechnique(
   const reject = (...reasons: string[]): void => {
     events.push({ k: "technique.rejected", tick, technique, target, reasons });
   };
+  const rejectByDefense = (reasons: string[]): void => {
+    events.push({ k: "technique.rejected", tick, technique, target, reasons, byDefense: true });
+  };
 
   const def = index.techniques.get(technique);
   if (def === undefined) {
@@ -130,9 +154,10 @@ export function launchTechnique(
     return;
   }
 
-  const { reasons, path } = evaluate(world, index, def, target);
+  const { reasons, path, closedByDefense } = evaluate(world, index, def, target);
   if (reasons.length > 0) {
-    reject(...reasons);
+    if (closedByDefense) rejectByDefense(reasons);
+    else reject(...reasons);
     return;
   }
 

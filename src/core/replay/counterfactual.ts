@@ -19,10 +19,12 @@ export interface Outcome {
   alerts: number;
   /** Operations that ended at a boundary that closed in front of them. */
   blocked: number;
-  /** Tick of the first such block, or 0. */
+  /** Tick of the first such block or defense refusal, whichever came first, or 0. */
   firstBlockedTick: number;
   /** Launches the engine refused, mostly for want of a permitted path. */
   refused: number;
+  /** Launches refused because a firewall or diode closed every path they needed. */
+  refusedByDefense: number;
   /** Nodes that hold an intruder foothold at the end, in id order. */
   compromised: string[];
   /** Nodes whose command channel is blocked at the end, in id order. */
@@ -55,13 +57,19 @@ export function runOutcome(
   let blocked = 0;
   let firstBlockedTick = 0;
   let refused = 0;
+  let refusedByDefense = 0;
   while (world.tick < toTick) {
     const result = step(world, byTick.get(world.tick + 1) ?? [], index);
     world = result.world;
     for (const event of result.events) {
       if (event.k === "ids.alert") alerts++;
-      else if (event.k === "technique.rejected") refused++;
-      else if (event.k === "op.blocked") {
+      else if (event.k === "technique.rejected") {
+        refused++;
+        if (event.byDefense === true) {
+          refusedByDefense++;
+          if (firstBlockedTick === 0) firstBlockedTick = event.tick;
+        }
+      } else if (event.k === "op.blocked") {
         blocked++;
         if (firstBlockedTick === 0) firstBlockedTick = event.tick;
       }
@@ -76,6 +84,7 @@ export function runOutcome(
     blocked,
     firstBlockedTick,
     refused,
+    refusedByDefense,
     compromised: world.nodes.filter((n) => n.integrity > 0).map((n) => n.id),
     commandChannelLost: world.nodes.filter((n) => n.cmdBlocked).map((n) => n.id),
     signalsAtStop: aspects.filter((a) => a === "stop" || a === "dark").length,

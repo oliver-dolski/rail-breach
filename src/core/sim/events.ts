@@ -33,7 +33,15 @@ export type SimEvent =
   | { k: "technique.failed"; tick: number; op: number; technique: string; node: string }
   | { k: "action.rejected"; tick: number; reason: RejectReason }
   /** A launch that did not meet its preconditions, with each failed one in words. */
-  | { k: "technique.rejected"; tick: number; technique: string; target: string; reasons: string[] }
+  | {
+      k: "technique.rejected";
+      tick: number;
+      technique: string;
+      target: string;
+      reasons: string[];
+      /** Every path the launch needed exists but a firewall or diode in force closes it. */
+      byDefense?: true;
+    }
   | { k: "op.started"; tick: number; op: number; technique: string; target: string; from: string }
   /** One hop: the payload leaves `from` now and arrives at `to` on `arriveTick`. */
   | {

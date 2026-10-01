@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { network } from "../../../src/content/network";
 import { linkAllows } from "../../../src/core/net/defenses";
+import { runOutcome } from "../../../src/core/replay/counterfactual";
 import type { TimedAction } from "../../../src/core/replay/recording";
 import { type Action, isAction } from "../../../src/core/sim/actions";
 import { DEFENSE_PLACEMENT_LATENCY_TICKS } from "../../../src/core/sim/constants";
@@ -85,8 +86,36 @@ describe("a firewall on a conduit (the tracer)", () => {
     expect(refused[0]?.reasons).toContain(
       "no permitted remote-services path from a compromised node to dispatch-hmi-1",
     );
+    // The refusal says a defense closed the path, so a comparison can count it.
+    expect(refused[0]?.byDefense).toBe(true);
     expect(kinds(events, "op.blocked")).toEqual([]);
     expect(nodeOf(world, "tms-server").cmdBlocked).toBe(false);
+  });
+
+  it("a launch refused with no defense in force carries no byDefense key", () => {
+    const launch: TimedAction = {
+      t: 1,
+      a: { type: "technique.launch", technique: "T0886", target: "dispatch-hmi-1" },
+    };
+    const { events } = run(createWorld(network, 1), index, [launch], 3);
+    const refused = kinds(events, "technique.rejected");
+    expect(refused).toHaveLength(1);
+    expect(refused[0]?.reasons.length).toBeGreaterThan(0);
+    expect("byDefense" in (refused[0] ?? {})).toBe(false);
+  });
+
+  it("an outcome counts only the refusals a defense caused", () => {
+    const actions = [...scenario.actions, place(hmiLaunchTick - 100, firewallOn(DMZ_TO_CONTROL))];
+    const defended = runOutcome(warmWorld(index), index, actions, END);
+    const flagged = kinds(run(warmWorld(index), index, actions, END).events, "technique.rejected");
+    expect(defended.refusedByDefense).toBe(flagged.filter((e) => e.byDefense === true).length);
+    expect(defended.refusedByDefense).toBeGreaterThan(0);
+    expect(defended.refused).toBe(flagged.length);
+    expect(defended.firstBlockedTick).toBeGreaterThan(0);
+
+    const open = runOutcome(warmWorld(index), index, scenario.actions, END);
+    expect(open.refusedByDefense).toBe(0);
+    expect(open.firstBlockedTick).toBe(0);
   });
 
   it("a restrictive allow-list that leaves the attacker's protocol out blocks just the same", () => {

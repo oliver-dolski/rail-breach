@@ -3,8 +3,8 @@ import { h, setText } from "../dom";
 import { timeToDetect } from "./detect";
 
 /**
- * The comparison view (DEF-04): the same scenario run with and without the viewer's
- * defenses, side by side, with a sentence on what the difference is. It shows two
+ * The comparison view (DEF-04): the same scenario run with no defense at all and with every
+ * defense in place (the scenario's own sensors and the viewer's), side by side, with a sentence on what the difference is. It shows two
  * Outcomes the engine computed and draws nothing else; the numbers are the engine's.
  */
 
@@ -30,7 +30,8 @@ export function compareRows(c: Comparison, endTick: number): CompareRow[] {
     row("Machines compromised", (o) => String(o.compromised.length)),
     row("Command channels lost", (o) => String(o.commandChannelLost.length)),
     row("Interlockings out of service", (o) => String(o.interlockingsDown)),
-    row("Attack steps stopped at a boundary", (o) => String(o.blocked)),
+    // A launch refused at a closed boundary counts like a payload stopped in flight.
+    row("Attack steps stopped at a boundary", (o) => String(o.blocked + o.refusedByDefense)),
     row("IDS alerts", (o) => String(o.alerts)),
     row("Time to detect", (o) => detect(o, endTick)),
   ];
@@ -51,7 +52,7 @@ export function compareVerdict(c: Comparison): string {
   const u = c.undefended;
   const d = c.defended;
   if (u.hash === d.hash) {
-    return "Your defenses changed nothing: both runs end in exactly the same state.";
+    return "The defenses changed nothing: both runs end in exactly the same state.";
   }
   const parts = [
     moved(u.compromised.length - d.compromised.length, "compromised", "machine", "machines"),
@@ -71,9 +72,9 @@ export function compareVerdict(c: Comparison): string {
     );
   if (u.detectedAt === 0 && d.detectedAt > 0) parts.push("the intruder is noticed");
   if (parts.length === 0) {
-    return "With your defenses the railway ends the same, but the run differs in detail (what crossed which boundary, and what was seen).";
+    return "With the defenses the railway ends the same, but the run differs in detail (what crossed which boundary, and what was seen).";
   }
-  return `With your defenses: ${parts.join(", ")}.`;
+  return `With the defenses: ${parts.join(", ")}.`;
 }
 
 function need<T extends HTMLElement>(doc: Document, id: string): T {
@@ -83,7 +84,7 @@ function need<T extends HTMLElement>(doc: Document, id: string): T {
 }
 
 export interface CompareDeps {
-  /** How many defenses the viewer has placed or removed so far. */
+  /** How many defense actions the session holds, recorded and live. */
   defenseCount(): number;
   /** Runs both sides; only called when there is at least one defense. */
   run(): Comparison | undefined;
@@ -150,13 +151,13 @@ export function createComparePanel(doc: Document, deps: CompareDeps): ComparePan
       button.disabled = count === 0;
       if (shownFor !== undefined && shownFor !== count) {
         // The defenses changed since the last comparison: what is on screen no longer matches.
-        setText(verdict, "Out of date: your defenses changed. Press Compare again.");
+        setText(verdict, "Out of date: the defenses changed. Press Compare again.");
       }
       setText(
         note,
         count === 0
           ? "Place a defense first; then this runs the scenario to the end with and without it."
-          : "Runs the scenario, same seed, to the end of the show as recorded and with your defenses.",
+          : "Runs the scenario, same seed, to the end of the show twice: with no defense at all and with every defense in place (the scenario's own sensors and yours).",
       );
     },
     reset: clear,

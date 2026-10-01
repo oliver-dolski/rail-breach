@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { compareSession, defenseCount } from "../../src/app/compare";
 import { createAttractSession } from "../../src/app/session";
+import { vendorVpn } from "../../src/content/scenarios";
 import type { Comparison, Outcome } from "../../src/core/replay/counterfactual";
 import type { Action } from "../../src/core/sim/actions";
 import { compareRows, compareVerdict, createComparePanel } from "../../src/ui/panel/compare";
@@ -14,6 +15,7 @@ const outcome = (over: Partial<Outcome> = {}): Outcome => ({
   blocked: 0,
   firstBlockedTick: 0,
   refused: 0,
+  refusedByDefense: 0,
   compromised: ["corp-ws-dispatch", "dmz-relay", "tms-server"],
   commandChannelLost: ["tms-server"],
   signalsAtStop: 12,
@@ -38,7 +40,7 @@ const held = (over: Partial<Outcome> = {}): Outcome =>
 
 const both = (undefended: Outcome, defended: Outcome): Comparison => ({ undefended, defended });
 
-describe("the comparison of a scenario with and without the viewer's defenses", () => {
+describe("the comparison of a scenario with and without defenses", () => {
   it("lists the same rows for both runs: signals, trains, machines, detection", () => {
     const rows = compareRows(both(outcome(), held({ detectedAt: 200, alerts: 2 })), 1000);
     expect(rows.map((r) => r.label)).toEqual([
@@ -62,13 +64,21 @@ describe("the comparison of a scenario with and without the viewer's defenses", 
     });
   });
 
+  it("counts a launch refused at a boundary like a payload stopped in flight", () => {
+    const rows = compareRows(both(outcome(), held({ blocked: 1, refusedByDefense: 3 })), 1000);
+    expect(rows.find((r) => r.label === "Attack steps stopped at a boundary")).toMatchObject({
+      without: "0",
+      with: "4",
+    });
+  });
+
   it("says what the defenses changed, and only what they changed", () => {
     expect(compareVerdict(both(outcome(), held()))).toBe(
-      "With your defenses: 2 fewer machines compromised, 1 fewer machine with the command channel lost, 10 fewer signals at stop, 4 fewer trains standing.",
+      "With the defenses: 2 fewer machines compromised, 1 fewer machine with the command channel lost, 10 fewer signals at stop, 4 fewer trains standing.",
     );
     expect(
       compareVerdict(both(outcome(), outcome({ hash: "cccccccc", alerts: 3, detectedAt: 120 }))),
-    ).toBe("With your defenses: 3 more IDS alerts, the intruder is noticed.");
+    ).toBe("With the defenses: 3 more IDS alerts, the intruder is noticed.");
     expect(compareVerdict(both(outcome(), outcome({ hash: "dddddddd" })))).toMatch(
       /ends the same, but the run differs in detail/,
     );
@@ -76,7 +86,7 @@ describe("the comparison of a scenario with and without the viewer's defenses", 
 
   it("does not invent an effect when both runs end the same", () => {
     expect(compareVerdict(both(outcome(), outcome()))).toBe(
-      "Your defenses changed nothing: both runs end in exactly the same state.",
+      "The defenses changed nothing: both runs end in exactly the same state.",
     );
   });
 
@@ -91,11 +101,24 @@ describe("the comparison of a scenario with and without the viewer's defenses", 
 const firewall: Action = { type: "defense.place", kind: "firewall", on: { conduit: "c-dmz-ctrl" } };
 
 describe("comparing a real session", () => {
-  it("has nothing to compare until a defense has been placed", () => {
-    const session = createAttractSession();
+  it("has nothing to compare while the session holds no defense at all", () => {
+    const session = createAttractSession({ scenario: vendorVpn });
     session.advance(20);
     expect(defenseCount(session)).toBe(0);
     expect(compareSession(session)).toBeUndefined();
+  });
+
+  it("the phishing scenario's own sensors are enough to compare: the railway ends the same, the no-defense run sees fewer alerts", () => {
+    const session = createAttractSession();
+    // Pins a new expectation: the two recorded sensors count, so Compare is open from the start.
+    expect(defenseCount(session)).toBe(2);
+    const result = compareSession(session);
+    expect(result).toBeDefined();
+    const { undefended, defended } = result ?? { undefended: outcome(), defended: outcome() };
+    expect(undefended.signalsAtStop).toBe(defended.signalsAtStop);
+    expect(undefended.trainsStanding).toBe(defended.trainsStanding);
+    expect(undefended.compromised).toEqual(defended.compromised);
+    expect(undefended.alerts).toBeLessThan(defended.alerts);
   });
 
   it("runs the same scenario twice from the same world, to the end of the show, and the firewall makes the difference", () => {
@@ -103,12 +126,12 @@ describe("comparing a real session", () => {
     session.advance(20);
     session.dispatch(firewall);
     session.advance(10);
-    expect(defenseCount(session)).toBe(1);
+    expect(defenseCount(session)).toBe(3);
 
     const result = compareSession(session);
     expect(result).toBeDefined();
     const { undefended, defended } = result ?? { undefended: outcome(), defended: outcome() };
-    // The recording as recorded: the chain reaches the traffic management server.
+    // The run with no defense at all: the chain reaches the traffic management server.
     expect(undefended.commandChannelLost).toContain("tms-server");
     expect(undefended.compromised).toContain("tms-server");
     // With the firewall the same chain stops at the boundary.
@@ -119,7 +142,16 @@ describe("comparing a real session", () => {
     );
     expect(defended.signalsAtStop).toBeLessThan(undefended.signalsAtStop);
     expect(defended.trainsStanding).toBeLessThanOrEqual(undefended.trainsStanding);
-    expect(compareVerdict(result as Comparison)).toMatch(/^With your defenses: .*fewer/);
+    expect(compareVerdict(result as Comparison)).toMatch(/^With the defenses: .*fewer/);
+
+    // G-02-9: the refusals at the firewall are in the row the viewer reads.
+    const row = compareRows(result as Comparison, 1000).find(
+      (r) => r.label === "Attack steps stopped at a boundary",
+    );
+    expect(defended.refusedByDefense).toBeGreaterThan(0);
+    expect(Number(row?.with)).toBeGreaterThan(0);
+    expect(row?.with).toBe(String(defended.blocked + defended.refusedByDefense));
+    expect(row?.without).toBe("0");
   });
 
   it("is deterministic and leaves the live session exactly where it was", () => {
@@ -135,23 +167,22 @@ describe("comparing a real session", () => {
     expect(session.live()).toBe(true);
   });
 
-  it("switches off only the viewer's defenses, not the sensors the recording starts with", () => {
+  it("switches off every defense, the scenario's sensors included", () => {
     const session = createAttractSession();
     session.advance(20);
     session.dispatch(firewall);
     const result = compareSession(session);
-    // The recorded sensors are on in both runs, so both see the same hop, and only the
-    // firewall differs: the defended run is the one that loses the chain.
-    expect(result?.undefended.alerts).toBeGreaterThan(0);
+    // The run with no defense at all has no sensor to read the hops (and no baseline coverage).
+    expect(result?.undefended.alerts).toBe(0);
   });
 
-  it("starting over forgets the viewer's defenses, so there is nothing to compare again", () => {
+  it("starting over forgets the viewer's defenses and keeps the scenario's own", () => {
     const session = createAttractSession();
     session.dispatch(firewall);
     session.advance(10);
     session.reset();
-    expect(defenseCount(session)).toBe(0);
-    expect(compareSession(session)).toBeUndefined();
+    expect(defenseCount(session)).toBe(2);
+    expect(compareSession(session)).toBeDefined();
   });
 });
 
@@ -249,7 +280,7 @@ describe("the comparison on the page", () => {
     const cells = rows[0]?.children.map((c) => c.textContent);
     expect(cells).toEqual(["Signals at stop", "12 of 19", "2 of 19"]);
     expect(byId.get("compare-table")?.hidden).toBe(false);
-    expect(byId.get("compare-verdict")?.textContent).toMatch(/^With your defenses: /);
+    expect(byId.get("compare-verdict")?.textContent).toMatch(/^With the defenses: /);
   });
 
   it("says when the result is out of date and forgets it on reset", () => {
