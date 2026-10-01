@@ -64,6 +64,7 @@ export function validateScenario(
 
   if (scenario.id === "") problems.push("a scenario has an empty id");
   if (scenario.title === "") problems.push(`${owner} has no title`);
+  if (scenario.idleCaption === "") problems.push(`${owner} has no idle caption`);
   if (!isUint(scenario.seed)) problems.push(`${owner} seed must be a non-negative integer`);
   if (!isUint(scenario.startTick)) problems.push(`${owner} startTick must be an integer >= 0`);
   if (!isUint(scenario.durationTicks) || scenario.durationTicks <= scenario.startTick) {

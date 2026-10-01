@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { catalog } from "../../src/app/catalog";
+import { captionText } from "../../src/ui/panel/panel";
 import { createScenarioSelect } from "../../src/ui/panel/scenario";
 
 /** Just enough of a document for the selector: elements with text, children, a value and listeners. */
@@ -78,5 +80,36 @@ describe("the scenario selector", () => {
     selector.show("x");
     expect(select.children[0]?.textContent).toBe("<b>x</b>");
     expect(summary.textContent).toBe("<script>1</script>");
+  });
+});
+
+describe("what the panel says before the attack starts", () => {
+  const scenarios = catalog.map((e) => e.scenario);
+
+  it("every scenario has its own idle caption, and only the phishing one names the dispatcher", () => {
+    const captions = scenarios.map((s) => s.idleCaption);
+    for (const caption of captions) expect(caption).not.toBe("");
+    expect(new Set(captions).size).toBe(scenarios.length);
+    for (const s of scenarios) {
+      if (s.id !== "phishing-dispatcher") expect(s.idleCaption).not.toContain("dispatcher");
+    }
+  });
+
+  it("puts a failure first, then the log's caption, then the running scenario's own idle caption", () => {
+    for (const s of scenarios) {
+      expect(captionText(undefined, "", s.idleCaption)).toBe(s.idleCaption);
+      expect(captionText(undefined, "Something happened.", s.idleCaption)).toBe(
+        "Something happened.",
+      );
+      expect(captionText("hash differs", "Something happened.", s.idleCaption)).toMatch(
+        /hash differs/,
+      );
+    }
+  });
+
+  it("every scenario title fits the full-width selector", () => {
+    for (const s of scenarios) expect(s.title.length, s.title).toBeLessThanOrEqual(32);
+    const html = readFileSync("index.html", "utf8");
+    expect(html).toMatch(/<dd class="kv-wide">\s*<select id="scenario-select"/);
   });
 });

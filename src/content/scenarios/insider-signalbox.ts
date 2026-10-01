@@ -21,6 +21,8 @@ export const insiderSignalbox: Scenario = {
   title: "Insider in the signal box",
   summary:
     "An insider with a genuine maintenance account starts inside the Velmoor Junction signal box and works on the interlocking.",
+  idleCaption:
+    "A quiet railway. Watch the maintenance workstation in the Velmoor Junction signal box.",
   seed: 38,
   startTick: 31740,
   durationTicks: 33100,

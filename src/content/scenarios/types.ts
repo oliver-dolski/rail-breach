@@ -11,6 +11,11 @@ export interface Scenario {
   title: string;
   /** One sentence for the selector: who the intruder is and how they get in. */
   summary: string;
+  /**
+   * What the panel says before the first attack event: where to look on the map, in the
+   * map's words. Display only, not part of the recording.
+   */
+  idleCaption: string;
   seed: number;
   /**
    * Tick at which attract mode starts showing the session. The engine runs the

@@ -22,6 +22,7 @@ export const vendorVpn: Scenario = {
   title: "Vendor VPN",
   summary:
     "The intruder arrives over the vendor's remote access and walks the vendor path into the control centre, past the DMZ.",
+  idleCaption: "A quiet railway. Watch the vendor's VPN gateway.",
   seed: 0,
   startTick: 30300,
   durationTicks: 31600,

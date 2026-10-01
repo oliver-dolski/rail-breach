@@ -238,6 +238,11 @@ body {
   font-size: 12px;
 }
 
+/* The scenario selector gets a row of its own, so the longest title is shown whole. */
+.kv .kv-wide {
+  grid-column: 1 / -1;
+}
+
 .chain {
   display: flex;
   flex-wrap: wrap;

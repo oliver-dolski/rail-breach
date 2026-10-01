@@ -25,6 +25,7 @@ export const phishingDispatcher: Scenario = {
   title: "Phishing to the dispatcher",
   summary:
     "An attachment opened in the dispatcher's office gives the intruder a first foothold; the chain reaches the traffic management server.",
+  idleCaption: "A quiet railway. Watch the dispatcher's office workstation.",
   seed: 6,
   startTick: 30631,
   durationTicks: 31900,

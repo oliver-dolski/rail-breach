@@ -12,6 +12,12 @@ function need<T extends HTMLElement>(doc: Document, id: string): T {
   return el as T;
 }
 
+/** What the caption line says: a failure first, then the log's own caption, else the scenario's idle one. */
+export function captionText(failure: string | undefined, logCaption: string, idle: string): string {
+  if (failure !== undefined) return `The recording no longer matches the engine: ${failure}`;
+  return logCaption || idle;
+}
+
 export interface Panel {
   update(session: AttractSession, view: RenderView, log: EventLog): void;
 }
@@ -58,12 +64,7 @@ export function createPanel(doc: Document): Panel {
       const { latest, total } = log.refusal();
       renderRefusal(refusal, latest, total);
 
-      setText(
-        caption,
-        status.failure !== undefined
-          ? `The recording no longer matches the engine: ${status.failure}`
-          : log.caption() || "A quiet railway. Watch the dispatcher's office workstation.",
-      );
+      setText(caption, captionText(status.failure, log.caption(), session.scenario.idleCaption));
 
       syncList(
         doc,
