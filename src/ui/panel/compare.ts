@@ -1,6 +1,7 @@
 import type { Comparison, Outcome } from "../../core/replay/counterfactual";
 import { TICKS_PER_SECOND } from "../../core/sim/constants";
 import { h, setText } from "../dom";
+import { openCard } from "./cards";
 import { timeToDetect } from "./detect";
 
 /**
@@ -209,6 +210,7 @@ export function createComparePanel(doc: Document, deps: CompareDeps): ComparePan
   };
 
   button.addEventListener("click", () => {
+    openCard(doc, "card-compare");
     let result: Comparison | undefined;
     try {
       result = deps.run();

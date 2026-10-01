@@ -4,6 +4,7 @@ import type { Action } from "../../core/sim/actions";
 import { DEFENSE_PLACEMENT_LATENCY_TICKS, TICKS_PER_SECOND } from "../../core/sim/constants";
 import type { World } from "../../core/sim/world";
 import { h, setText } from "../dom";
+import { openCard } from "./cards";
 
 /**
  * The defense palette: pick what to place, then click a conduit on the map or its
@@ -142,6 +143,7 @@ export function createDefensePalette(doc: Document, deps: DefenseDeps): DefenseP
   });
 
   const place = (conduitId: string): void => {
+    openCard(doc, "card-defend");
     const action = placementFor(choice, conduitId, deps.content);
     if (action !== undefined) deps.onAction(action);
   };

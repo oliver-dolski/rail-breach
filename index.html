@@ -46,34 +46,45 @@
       <aside id="panel" class="panel" aria-label="Session">
         <header class="panel-head">
           <h1>Rail Breach</h1>
-          <p class="tagline">
-            A live attack on a fictional railway, replayed from a recorded session.
-            Techniques from MITRE ATT&amp;CK for ICS.
-          </p>
+          <p class="tagline">A live attack on a fictional railway.</p>
         </header>
 
-        <section class="indicator">
-          <div
-            id="indicator-label"
-            class="indicator-label"
-            data-state="checking"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            safety invariant: checking
-          </div>
-          <div id="indicator-detail" class="indicator-detail"></div>
+        <section id="card-safety" class="card indicator-card">
+          <section class="indicator">
+            <div
+              id="indicator-label"
+              class="indicator-label"
+              data-state="checking"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              safety invariant: checking
+            </div>
+            <div id="indicator-detail" class="indicator-detail"></div>
+          </section>
         </section>
 
-        <section class="block">
-          <h2>Session</h2>
+        <section id="card-session" class="card">
+          <h2 class="card-title">Session</h2>
           <dl class="kv">
             <dt>Scenario</dt>
             <dd class="kv-wide">
               <select id="scenario-select" class="field" aria-label="Scenario"></select>
             </dd>
-            <dt>Clock</dt>
-            <dd id="clock">00:00</dd>
+          </dl>
+          <p class="card-note">Replayed from a recorded session.</p>
+          <p id="scenario-summary" class="card-note"></p>
+          <div class="session-metrics">
+            <div class="metric">
+              <span class="metric-name">Clock</span>
+              <span id="clock" class="metric-clock">00:00</span>
+            </div>
+            <div class="metric">
+              <span class="metric-name">Detected</span>
+              <span id="stat-detect" class="metric-detect"></span>
+            </div>
+          </div>
+          <dl class="kv stats">
             <dt>Trains</dt>
             <dd id="stat-trains"></dd>
             <dt>Signals</dt>
@@ -82,185 +93,200 @@
             <dd id="stat-nodes"></dd>
             <dt>Routes</dt>
             <dd id="stat-routes"></dd>
-            <dt>Detected</dt>
-            <dd id="stat-detect"></dd>
           </dl>
-          <p id="scenario-summary" class="muted"></p>
-          <p id="session-note" class="muted" role="status" aria-live="polite"></p>
+          <p id="session-note" class="card-note" role="status" aria-live="polite"></p>
         </section>
 
-        <section class="block">
-          <h2>Launch a technique</h2>
-          <p class="muted">
-            Search by ID (current or pre-v19), name or everyday wording, pick one, then choose
-            where to aim it. A launch that cannot work is refused, and the log says why.
-          </p>
-          <input
-            id="picker-search"
-            class="field"
-            type="search"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="T1692.001, T0855, spoof, vpn"
-            aria-label="Search techniques by ID, name or wording"
-          />
-          <div id="picker-list" class="picker-list"></div>
-          <div class="field-row">
-            <select id="picker-target" class="field" aria-label="Target node" disabled></select>
-            <button type="button" id="picker-launch" class="plain" disabled>Launch</button>
-          </div>
-          <p id="picker-note" class="muted" aria-live="polite"></p>
-        </section>
-
-        <section class="block">
-          <h2>Type what to try</h2>
-          <p class="muted">
-            For example: phishing to the dispatcher. By default the text is read here in the
-            browser by keywords; with your own LLM key (below) it goes to the provider instead.
-            Either way nothing runs until you press Run.
-          </p>
-          <div class="field-row">
-            <input
-              id="freetext-input"
-              class="field"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="vendor VPN, scan the network, spoof the reports"
-              aria-label="Free text: what to try"
-            />
-            <button type="button" id="freetext-map" class="plain">Interpret</button>
-          </div>
-          <div id="freetext-chips" class="chips" aria-live="polite"></div>
-          <p id="freetext-note" class="muted" aria-live="polite"></p>
-          <button type="button" id="freetext-run" class="plain" disabled>Run</button>
-          <details class="llm">
-            <summary>Use your own LLM key (optional)</summary>
-            <p class="muted">
-              Without a key the text is read offline by keywords. With one, pressing Interpret
-              sends the text and the technique list from this browser to the provider's API, and
-              any problem falls back to keywords. The key stays in this tab only and is never
-              recorded or shown again.
-            </p>
-            <div class="field-row">
-              <input
-                id="llm-key"
-                class="field"
-                type="password"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="API key"
-                aria-label="LLM API key"
-              />
-              <button type="button" id="llm-save" class="plain">Use key</button>
-            </div>
-            <div class="field-row">
-              <select id="llm-model" class="field" aria-label="LLM model"></select>
-              <button type="button" id="llm-forget" class="plain">Forget key</button>
-            </div>
-            <p id="llm-status" class="muted" aria-live="polite"></p>
-          </details>
-        </section>
-
-        <section class="block">
-          <h2>Defenses</h2>
-          <p class="muted">
-            Pick a defense, then click a conduit (a thick line between zones) on the map, or use
-            its button. Segmentation stops the intruder at the boundary.
-          </p>
-          <fieldset id="defense-kind" class="segmented" aria-label="Defense to place">
-            <button type="button" data-kind="firewall" aria-pressed="true">Firewall</button>
-            <button type="button" data-kind="diode" aria-pressed="false">Data diode</button>
-            <button type="button" data-kind="ids" aria-pressed="false">IDS sensor</button>
-          </fieldset>
-          <fieldset id="defense-flow" class="segmented" aria-label="Diode direction" hidden>
-            <button type="button" data-flow="office" aria-pressed="true">Data to office</button>
-            <button type="button" data-flow="tracks" aria-pressed="false">Data to tracks</button>
-          </fieldset>
-          <div id="defense-conduits" class="conduit-list"></div>
-          <ul id="defense-placed" class="placed"></ul>
-          <p id="defense-note" class="muted"></p>
-          <button type="button" id="defense-reset" class="plain">Start over</button>
-        </section>
-
-        <section class="block">
-          <h2>With and without defenses</h2>
-          <p id="compare-note" class="muted"></p>
-          <button type="button" id="compare-run" class="plain" disabled>Compare</button>
-          <table id="compare-table" class="compare" hidden>
-            <thead>
-              <tr>
-                <th scope="col">At the end of the show</th>
-                <th scope="col">No defenses</th>
-                <th scope="col">With the defenses</th>
-              </tr>
-            </thead>
-            <tbody id="compare-body"></tbody>
-          </table>
-          <p id="compare-verdict" class="caption"></p>
-        </section>
-
-        <section class="block">
-          <h2>Attack chain</h2>
+        <section id="card-chain" class="card">
+          <h2 class="card-title">Attack chain</h2>
           <div id="chain" class="chain"></div>
+          <p class="empty-note">No technique has run yet. The first one appears here.</p>
           <p id="caption" class="caption"></p>
         </section>
 
-        <section class="block">
-          <h2>Attacker and detection</h2>
-          <div class="timeline">
-            <div class="tl-row">
-              <span class="tl-name">Attacker</span>
-              <div id="tl-attacker" class="tl-track">
-                <span id="tl-band-attacker" class="tl-band" hidden></span>
-                <span id="tl-now-attacker" class="tl-now" aria-hidden="true"></span>
-              </div>
+        <details id="card-try" class="card" name="panel-card">
+          <summary class="card-title">Try a technique</summary>
+          <div class="card-body">
+            <p
+              class="card-intro"
+              title="Current and pre-v19 IDs both work. A launch that cannot work is refused, and the log says why."
+            >
+              Search by ID, name or plain words, then pick a target.
+            </p>
+            <input
+              id="picker-search"
+              class="field"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="T1692.001, T0855, spoof, vpn"
+              aria-label="Search techniques by ID, name or wording"
+            />
+            <div id="picker-list" class="picker-list"></div>
+            <div class="field-row">
+              <select id="picker-target" class="field" aria-label="Target node" disabled></select>
+              <button type="button" id="picker-launch" class="plain" disabled>Launch</button>
             </div>
-            <div class="tl-row">
-              <span class="tl-name">Detection</span>
-              <div id="tl-detection" class="tl-track">
-                <span id="tl-band-detection" class="tl-band" hidden></span>
-                <span id="tl-now-detection" class="tl-now" aria-hidden="true"></span>
-              </div>
+            <p id="picker-note" class="muted" aria-live="polite"></p>
+            <p
+              class="card-intro card-intro-sub"
+              title="For example: phishing to the dispatcher. By default the text is read here in the browser by keywords."
+            >
+              Describe an attack in your own words. Nothing runs until you press Run.
+            </p>
+            <div class="field-row">
+              <input
+                id="freetext-input"
+                class="field"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="vendor VPN, scan the network, spoof the reports"
+                aria-label="Free text: what to try"
+              />
+              <button type="button" id="freetext-map" class="plain">Interpret</button>
             </div>
+            <div id="freetext-chips" class="chips" aria-live="polite"></div>
+            <p id="freetext-note" class="muted" aria-live="polite"></p>
+            <button type="button" id="freetext-run" class="plain" disabled>Run</button>
+            <details class="llm">
+              <summary>Use your own LLM key (optional)</summary>
+              <p
+                class="card-intro"
+                title="Without a key the text is read offline by keywords, and any provider problem falls back to keywords. The key is never recorded or shown again."
+              >
+                With a key, Interpret sends your text to the provider; the key stays in this tab.
+              </p>
+              <div class="field-row">
+                <input
+                  id="llm-key"
+                  class="field"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="API key"
+                  aria-label="LLM API key"
+                />
+                <button type="button" id="llm-save" class="plain">Use key</button>
+              </div>
+              <div class="field-row">
+                <select id="llm-model" class="field" aria-label="LLM model"></select>
+                <button type="button" id="llm-forget" class="plain">Forget key</button>
+              </div>
+              <p id="llm-status" class="muted" aria-live="polite"></p>
+            </details>
           </div>
-          <p id="tl-dwell" class="muted"></p>
-          <p class="muted">
-            The shaded gap runs from the attacker's first action to the first IDS alert: the
-            time the intruder went unnoticed. Hover a mark for what it was.
-          </p>
-        </section>
+        </details>
 
-        <section class="block">
-          <h2>Latest interlocking refusal</h2>
-          <p id="refusal-text" class="refusal"></p>
-          <p id="refusal-count" class="muted"></p>
-        </section>
+        <details id="card-defend" class="card" name="panel-card">
+          <summary class="card-title">Defend the line</summary>
+          <div class="card-body">
+            <p
+              class="card-intro"
+              title="A conduit is a thick line between zones. Segmentation stops the intruder at the boundary."
+            >
+              Pick a defense, then click a conduit on the map.
+            </p>
+            <fieldset id="defense-kind" class="segmented" aria-label="Defense to place">
+              <button type="button" data-kind="firewall" aria-pressed="true">Firewall</button>
+              <button type="button" data-kind="diode" aria-pressed="false">Data diode</button>
+              <button type="button" data-kind="ids" aria-pressed="false">IDS sensor</button>
+            </fieldset>
+            <fieldset id="defense-flow" class="segmented" aria-label="Diode direction" hidden>
+              <button type="button" data-flow="office" aria-pressed="true">Data to office</button>
+              <button type="button" data-flow="tracks" aria-pressed="false">Data to tracks</button>
+            </fieldset>
+            <div id="defense-conduits" class="conduit-list"></div>
+            <ul id="defense-placed" class="placed"></ul>
+            <p class="empty-note">No defense placed.</p>
+            <p id="defense-note" class="muted"></p>
+            <button type="button" id="defense-reset" class="plain">Start over</button>
+          </div>
+        </details>
 
-        <section class="block grow">
-          <h2>Events</h2>
-          <ul id="log" class="log"></ul>
-        </section>
+        <details id="card-compare" class="card" name="panel-card">
+          <summary class="card-title">With and without defenses</summary>
+          <div class="card-body">
+            <p id="compare-note" class="muted"></p>
+            <button type="button" id="compare-run" class="plain" disabled>Compare</button>
+            <table id="compare-table" class="compare" hidden>
+              <thead>
+                <tr>
+                  <th scope="col">At the end of the show</th>
+                  <th scope="col">No defenses</th>
+                  <th scope="col">With the defenses</th>
+                </tr>
+              </thead>
+              <tbody id="compare-body"></tbody>
+            </table>
+            <p id="compare-verdict" class="caption"></p>
+          </div>
+        </details>
 
-        <section class="block">
-          <h2>IDS alerts</h2>
-          <ul id="alerts" class="log log-alerts"></ul>
-        </section>
+        <details id="card-timeline" class="card" name="panel-card">
+          <summary class="card-title">Timeline</summary>
+          <div class="card-body">
+            <div class="timeline">
+              <div class="tl-row">
+                <span class="tl-name">Attacker</span>
+                <div id="tl-attacker" class="tl-track">
+                  <span id="tl-band-attacker" class="tl-band" hidden></span>
+                  <span id="tl-now-attacker" class="tl-now" aria-hidden="true"></span>
+                </div>
+              </div>
+              <div class="tl-row">
+                <span class="tl-name">Detection</span>
+                <div id="tl-detection" class="tl-track">
+                  <span id="tl-band-detection" class="tl-band" hidden></span>
+                  <span id="tl-now-detection" class="tl-now" aria-hidden="true"></span>
+                </div>
+              </div>
+            </div>
+            <p id="tl-dwell" class="muted"></p>
+            <p
+              class="card-intro"
+              title="The gap runs from the attacker's first action to the first IDS alert. Hover a mark for what it was."
+            >
+              The shaded gap is the time the intruder went unnoticed.
+            </p>
+          </div>
+        </details>
 
-        <section class="block">
-          <h2>Key</h2>
-          <ul class="legend">
-            <li><i class="glyph g-normal"></i>machine, normal</li>
-            <li><i class="glyph g-compromised"></i>intruder has a foothold</li>
-            <li><i class="glyph g-degraded"></i>degraded</li>
-            <li><i class="glyph g-lost"></i>operators lost control</li>
-            <li><i class="glyph g-stop"></i><i class="glyph g-caution"></i><i class="glyph g-proceed"></i>signal: stop, caution, proceed</li>
-            <li><i class="glyph g-packet"></i>attacker traffic</li>
-            <li><i class="glyph g-firewall"></i>firewall</li>
-            <li><i class="glyph g-diode"></i>data diode (arrow: the way data may pass)</li>
-            <li><i class="glyph g-ids"></i>IDS sensor</li>
-          </ul>
-        </section>
+        <details id="card-alerts" class="card" name="panel-card">
+          <summary class="card-title">Refusals and alerts</summary>
+          <div class="card-body">
+            <h3 class="card-sub">Latest interlocking refusal</h3>
+            <p id="refusal-text" class="refusal"></p>
+            <p id="refusal-count" class="muted"></p>
+            <h3 class="card-sub">IDS alerts</h3>
+            <ul id="alerts" class="log log-alerts"></ul>
+          </div>
+        </details>
+
+        <details id="card-events" class="card" name="panel-card" open>
+          <summary class="card-title">Events</summary>
+          <div class="card-body">
+            <ul id="log" class="log"></ul>
+            <p class="empty-note">Waiting for the first action.</p>
+          </div>
+        </details>
+
+        <details id="card-key" class="card" name="panel-card">
+          <summary class="card-title">Key</summary>
+          <div class="card-body">
+            <ul class="legend">
+              <li><i class="glyph g-normal"></i>machine, normal</li>
+              <li><i class="glyph g-compromised"></i>intruder has a foothold</li>
+              <li><i class="glyph g-degraded"></i>degraded</li>
+              <li><i class="glyph g-lost"></i>operators lost control</li>
+              <li><i class="glyph g-stop"></i><i class="glyph g-caution"></i><i class="glyph g-proceed"></i>signal: stop, caution, proceed</li>
+              <li><i class="glyph g-packet"></i>attacker traffic</li>
+              <li><i class="glyph g-firewall"></i>firewall</li>
+              <li><i class="glyph g-diode"></i>data diode (arrow: the way data may pass)</li>
+              <li><i class="glyph g-ids"></i>IDS sensor</li>
+            </ul>
+          </div>
+        </details>
 
         <footer class="panel-foot">
           <p>

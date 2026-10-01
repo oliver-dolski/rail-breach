@@ -99,6 +99,31 @@ async function run(target) {
     await sleep(500);
     facts = await browser.evaluate(PAGE_FACTS);
 
+    // The panel at a laptop viewport: the first three cards must sit above the fold, with the
+    // Try a technique card closed below them.
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 720,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await sleep(600);
+    const fold = await browser.evaluate(`(() => {
+      const panel = document.getElementById("panel");
+      panel.scrollTop = 0;
+      const box = (id) => document.getElementById(id)?.getBoundingClientRect();
+      const chain = box("card-chain");
+      const next = box("card-try");
+      return {
+        chainBottom: chain ? chain.bottom : -1,
+        nextTop: next ? next.top : -1,
+        tryOpen: document.getElementById("card-try")?.open === true,
+        eventsOpen: document.getElementById("card-events")?.open === true,
+        height: window.innerHeight,
+      };
+    })()`);
+    await browser.send("Emulation.clearDeviceMetricsOverride");
+
     const origin = new URL(target).origin;
     const net = networkLog(browser.events);
     const isFavicon = (url) => new URL(url).pathname === "/favicon.ico";
@@ -225,6 +250,17 @@ async function run(target) {
           ...(fontResponses.length
             ? fontResponses
             : ["no .woff2 answered 200 from the page origin"]),
+        ],
+      ],
+      [
+        "13 four cards above the fold at 1280 x 720",
+        fold.chainBottom > 0 &&
+          fold.chainBottom <= fold.height &&
+          fold.nextTop >= fold.chainBottom &&
+          !fold.tryOpen &&
+          fold.eventsOpen,
+        [
+          `attack chain card ends at ${Math.round(fold.chainBottom)} of ${fold.height}, next card starts at ${Math.round(fold.nextTop)}`,
         ],
       ],
     ];

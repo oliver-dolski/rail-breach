@@ -27,6 +27,22 @@
   --detection: #2bc2d6;
   --defense: #a9d13c;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --fs-label: 11px;
+  --fs-body: 13px;
+  --fs-heading: 16px;
+  --fs-display: 20px;
+  --radius-card: 8px;
+  --radius-control: 4px;
+  --card-bg-top: #111823;
+  --card-bg-bottom: #0d131b;
+  --card-border: #1c2430;
+  --card-border-hover: #2b3646;
   --sans: "Space Grotesk", system-ui, "Segoe UI", sans-serif;
 }
 
@@ -41,7 +57,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .app {
@@ -159,51 +175,186 @@ body {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-sm);
   min-height: 0;
-  padding: 14px 16px;
+  padding: var(--space-md);
   overflow-y: auto;
   background: var(--panel-bg);
   border-left: 1px solid var(--line);
+  line-height: 1.5;
+  scrollbar-width: thin;
+  scrollbar-color: #2b3646 #0b0f15;
+}
+
+/* Cards keep their natural height; the panel scrolls instead of squeezing them. */
+.panel > * {
+  flex: none;
+  min-width: 0;
+}
+
+.panel-head {
+  margin-bottom: var(--space-md);
 }
 
 .panel h1 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
+  line-height: 1.1;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.panel h2 {
-  margin: 0 0 6px;
-  font-family: var(--mono);
-  font-size: 10.5px;
+.tagline {
+  margin: var(--space-xs) 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+/* A card is a surface: a faint vertical gradient, a hairline border and a lit top edge. */
+.card {
+  min-width: 0;
+  padding: var(--space-md);
+  background: linear-gradient(180deg, var(--card-bg-top), var(--card-bg-bottom));
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.card:has(> summary:hover) {
+  border-color: var(--card-border-hover);
+}
+
+.card-title {
+  margin: 0;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.tagline {
-  margin: 6px 0 0;
-  color: var(--muted);
-  line-height: 1.4;
-  font-size: 12.5px;
+section.card > .card-title {
+  margin-bottom: var(--space-sm);
 }
 
-.indicator {
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #0d131b;
+/* The lower cards: a 40 px summary row and a body that scrolls with the panel. */
+details.card {
+  padding: 0;
+}
+
+details.card > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 40px;
+  padding: 0 var(--space-md);
+  cursor: pointer;
+  list-style: none;
+}
+
+details.card > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The chevron is two borders of an empty box, so it needs no icon file. */
+details.card > summary::after {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+}
+
+details.card[open] > summary::after {
+  margin-top: 3px;
+  border-color: var(--detection);
+  transform: rotate(-135deg);
+}
+
+details.card > summary:focus-visible {
+  outline: 2px solid var(--detection);
+  outline-offset: -2px;
+  border-radius: var(--radius-card);
+}
+
+.card-body {
+  padding: 0 var(--space-md) var(--space-md);
+}
+
+.card-intro {
+  margin: 0 0 var(--space-sm);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.card-intro-sub {
+  margin-top: var(--space-md);
+}
+
+.card-note {
+  margin: var(--space-xs) 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.card-note:empty {
+  display: none;
+}
+
+.card-sub {
+  margin: var(--space-sm) 0 var(--space-xs);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.empty-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* An empty list shows its note; one entry in the list hides it. */
+:not(:empty) + .empty-note {
+  display: none;
+}
+
+/* The verdict card: the lit left edge and the soft outer glow carry the state, nothing pulses. */
+.indicator-card {
+  border-left: 2px solid var(--muted);
+}
+
+.indicator-card:has(.indicator-label[data-state="held"]) {
+  border-left-color: var(--signal-proceed);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 24px -8px var(--signal-proceed);
+}
+
+.indicator-card:has(.indicator-label[data-state="breached"]) {
+  border-left-color: var(--signal-stop);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 24px -8px var(--signal-stop);
 }
 
 .indicator-label {
-  font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -217,28 +368,19 @@ body {
 }
 
 .indicator-detail {
-  margin-top: 3px;
-  font-size: 11.5px;
+  margin-top: var(--space-xs);
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--muted);
-}
-
-.block {
-  min-width: 0;
-}
-
-.block.grow {
-  flex: 1 1 auto;
-  min-height: 120px;
-  display: flex;
-  flex-direction: column;
 }
 
 .kv {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 3px 8px;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-sm);
   margin: 0;
-  font-size: 12.5px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .kv dt {
@@ -247,28 +389,73 @@ body {
 
 .kv dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 /* The scenario selector gets a row of its own, so the longest title is shown whole. */
 .kv .kv-wide {
   grid-column: 1 / -1;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.stats {
+  margin-top: var(--space-sm);
+}
+
+/* The clock and the time to detect sit side by side, the two figures the session is read by. */
+.session-metrics {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.metric-name {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.metric-clock {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.metric-detect {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .chain {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  min-height: 22px;
+  gap: var(--space-xs);
+}
+
+.chain:empty {
+  display: none;
 }
 
 .chain span {
-  padding: 2px 7px;
+  padding: 2px var(--space-sm);
   border: 1px solid var(--attacker);
-  border-radius: 3px;
+  border-radius: var(--radius-control);
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 11px;
 }
 
 .chain span.tone-done {
@@ -289,41 +476,54 @@ body {
 }
 
 .caption {
-  margin: 8px 0 0;
-  min-height: 3.6em;
+  margin: var(--space-sm) 0 0;
   color: var(--text);
-  font-size: 12.5px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The story line stays at four lines so the card never pushes the tools below the fold; the Events log has the full wording. */
+#caption {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  min-height: 3em;
+  overflow: hidden;
 }
 
 .refusal {
   margin: 0;
   font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.5;
   word-break: break-word;
 }
 
 .muted {
-  margin: 3px 0 0;
-  font-size: 11.5px;
+  margin: var(--space-xs) 0 0;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--muted);
 }
 
 .log {
-  flex: 1 1 auto;
-  min-height: 0;
   margin: 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
+/* Events is the one list that grows without bound; it scrolls inside its card. */
+#log {
+  max-height: 40vh;
+}
+
 .log li {
-  padding: 3px 0 3px 8px;
+  padding: 3px 0 3px var(--space-sm);
   border-left: 2px solid var(--line);
   color: var(--text);
 }
@@ -356,9 +556,9 @@ body {
 
 .segmented {
   display: flex;
-  gap: 4px;
+  gap: var(--space-xs);
   min-width: 0;
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-sm);
   padding: 0;
   border: 0;
 }
@@ -371,13 +571,14 @@ body {
 .conduit-list button,
 .placed button,
 button.plain {
-  padding: 4px 8px;
+  min-height: var(--space-xl);
+  padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-control);
   background: #0d131b;
   color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -405,31 +606,34 @@ button:focus-visible {
 .conduit-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin: 0 0 6px;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-sm);
 }
 
 .conduit-list button {
   font-size: 11px;
-  padding: 3px 6px;
   text-align: left;
 }
 
 .placed {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-sm);
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 4px;
-  font-size: 11.5px;
+  gap: var(--space-xs);
+  font-size: 11px;
+}
+
+.placed:empty {
+  display: none;
 }
 
 .placed li {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 3px 0 3px 8px;
+  gap: var(--space-sm);
+  padding: 3px 0 3px var(--space-sm);
   border-left: 2px solid var(--defense);
 }
 
@@ -441,13 +645,14 @@ button:focus-visible {
 .field {
   width: 100%;
   min-width: 0;
-  padding: 4px 6px;
+  min-height: var(--space-xl);
+  padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-control);
   background: #0d131b;
   color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .field:focus-visible {
@@ -457,8 +662,8 @@ button:focus-visible {
 
 .field-row {
   display: flex;
-  gap: 4px;
-  margin-top: 6px;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
 }
 
 .field-row .field {
@@ -469,7 +674,7 @@ button:focus-visible {
   display: grid;
   gap: 2px;
   max-height: 180px;
-  margin-top: 6px;
+  margin-top: var(--space-sm);
   overflow-y: auto;
 }
 
@@ -477,13 +682,13 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding: 3px 6px;
+  padding: 3px var(--space-sm);
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -519,8 +724,8 @@ button.plain:disabled {
 .chips {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin-top: 6px;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
 }
 
 .chips:empty {
@@ -528,24 +733,28 @@ button.plain:disabled {
 }
 
 .chips .tone-chip {
-  padding: 3px 6px;
+  padding: 3px var(--space-sm);
   border-left: 2px solid var(--attacker);
   background: #0d131b;
-  font-size: 11.5px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 
 .llm {
-  margin-top: 8px;
-  font-size: 12px;
+  margin-top: var(--space-md);
+  font-size: 13px;
 }
 
-.llm summary {
+details.llm > summary {
   cursor: pointer;
   color: var(--muted);
 }
 
-.llm summary:focus-visible {
+.llm > .card-intro {
+  margin-top: var(--space-sm);
+}
+
+details.llm > summary:focus-visible {
   outline: 2px solid var(--detection);
   outline-offset: 1px;
 }
@@ -555,15 +764,15 @@ button.plain:disabled {
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 5px;
-  font-size: 12px;
+  gap: var(--space-sm);
+  font-size: 11px;
   color: var(--muted);
 }
 
 .legend li {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-sm);
 }
 
 .glyph {
@@ -650,17 +859,22 @@ button.plain:disabled {
 }
 
 .panel-foot {
+  padding: var(--space-sm) var(--space-xs) 0;
   font-size: 11px;
   line-height: 1.4;
   color: var(--muted);
 }
 
+.panel-foot p {
+  margin: 0;
+}
+
 /* The MITRE attribution is a legal notice, so it stays whole and readable but sits quietly under the disclaimer. */
 .panel-foot .attribution {
-  margin: 8px 0 0;
-  padding-top: 8px;
+  margin: var(--space-sm) 0 0;
+  padding-top: var(--space-sm);
   border-top: 1px solid var(--line);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.45;
   text-wrap: pretty;
 }
@@ -763,8 +977,16 @@ button.plain:disabled {
     overflow-y: visible;
   }
 
-  .block.grow {
-    min-height: 220px;
+  details.card > summary {
+    min-height: var(--space-2xl);
+  }
+
+  .field,
+  button.plain,
+  .segmented button,
+  .conduit-list button,
+  .placed button {
+    min-height: 44px;
   }
 }
 
@@ -907,7 +1129,7 @@ button.plain:disabled {
   width: 100%;
   margin: 6px 0 0;
   border-collapse: collapse;
-  font-size: 11.5px;
+  font-size: 11px;
 }
 
 .compare th,
@@ -915,12 +1137,12 @@ button.plain:disabled {
   padding: 3px 4px;
   border-bottom: 1px solid var(--line);
   text-align: left;
-  font-weight: normal;
+  font-weight: 400;
 }
 
 .compare thead th {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .compare tbody th {
@@ -939,7 +1161,7 @@ button.plain:disabled {
 /* The second cue next to the colour: a mark in front of the figure, and the same fact in words for a screen reader. */
 .compare .cue {
   margin-right: 4px;
-  font-weight: bold;
+  font-weight: 600;
 }
 
 .visually-hidden {

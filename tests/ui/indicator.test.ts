@@ -159,10 +159,13 @@ describe("what a screen reader is told", () => {
 
   it("announces only the verdict: the live region holds the label, not the running tick count", () => {
     const section = html.match(/<section class="indicator"[^>]*>/)?.[0] ?? "";
+    expect(section).not.toBe("");
     expect(section).not.toMatch(/aria-live/);
     const label = html.match(/<div\s+id="indicator-label"[^>]*>/)?.[0] ?? "";
+    expect(label).not.toBe("");
     expect(label).toMatch(/aria-live="polite"/);
     const detail = html.match(/<div\s+id="indicator-detail"[^>]*>/)?.[0] ?? "";
+    expect(detail).not.toBe("");
     expect(detail).not.toMatch(/aria-live/);
   });
 

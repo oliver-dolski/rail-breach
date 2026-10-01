@@ -110,6 +110,8 @@ describe("what the panel says before the attack starts", () => {
   it("every scenario title fits the full-width selector", () => {
     for (const s of scenarios) expect(s.title.length, s.title).toBeLessThanOrEqual(32);
     const html = readFileSync("index.html", "utf8");
+    const row = /<dd class="kv-wide">\s*<select id="scenario-select"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(row).not.toBe("");
     expect(html).toMatch(/<dd class="kv-wide">\s*<select id="scenario-select"/);
   });
 });
