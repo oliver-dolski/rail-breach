@@ -38,6 +38,14 @@ export function rowLabel(t: TechniqueEntry): string {
   return `${t.id}${legacy} ${t.name}`;
 }
 
+/**
+ * The note after a launch. The engine decides whether a launch is allowed (T0840 needs a
+ * foothold, for one) and the log says why when it is not, so the note only claims it was sent.
+ */
+export function launchNote(techniqueId: string, targetLabel: string): string {
+  return `Sent ${techniqueId} to ${targetLabel}. The log shows whether it took.`;
+}
+
 function need<T extends HTMLElement>(doc: Document, id: string): T {
   const el = doc.getElementById(id);
   if (!el) throw new Error(`index.html has no element #${id}`);
@@ -95,6 +103,6 @@ export function createPicker(doc: Document, deps: PickerDeps): void {
   launch.addEventListener("click", () => {
     if (picked === undefined || target.value === "") return;
     deps.onAction(launchAction(picked.id, target.value));
-    setText(note, `Launched ${picked.id} at ${target.selectedOptions[0]?.text ?? target.value}.`);
+    setText(note, launchNote(picked.id, target.selectedOptions[0]?.text ?? target.value));
   });
 }

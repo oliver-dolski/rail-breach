@@ -871,8 +871,13 @@ button.plain:disabled {
   color: var(--text);
 }
 
-.compare td:last-child {
+/* The defended column is coloured only where it differs: lime for better, the attacker colour for worse. */
+.compare td[data-change="better"] {
   color: var(--defense);
+}
+
+.compare td[data-change="worse"] {
+  color: var(--attacker);
 }
 
 .compare[hidden] {

@@ -73,15 +73,83 @@ describe("the comparison of a scenario with and without defenses", () => {
   });
 
   it("says what the defenses changed, and only what they changed", () => {
+    // Pins a new expectation: held() also stops one attack step at a boundary, a changed row that now has its clause.
     expect(compareVerdict(both(outcome(), held()))).toBe(
-      "With the defenses: 2 fewer machines compromised, 1 fewer machine with the command channel lost, 10 fewer signals at stop, 4 fewer trains standing.",
+      "With the defenses: 2 fewer machines compromised, 1 fewer machine with the command channel lost, 10 fewer signals at stop, 4 fewer trains standing, 1 more attack step stopped at a boundary.",
     );
     expect(
       compareVerdict(both(outcome(), outcome({ hash: "cccccccc", alerts: 3, detectedAt: 120 }))),
     ).toBe("With the defenses: 3 more IDS alerts, the intruder is noticed.");
-    expect(compareVerdict(both(outcome(), outcome({ hash: "dddddddd" })))).toMatch(
-      /ends the same, but the run differs in detail/,
+  });
+
+  it("says the table is the same when no figure differs, even though the hashes do", () => {
+    // Pins a new expectation: it replaces the sentence that claimed a difference in detail.
+    const text = compareVerdict(both(outcome(), outcome({ hash: "dddddddd" })));
+    expect(text).toBe("Every figure in the table is the same with and without the defenses.");
+    expect(text).not.toMatch(/in detail/);
+  });
+
+  it("has a clause for every row that changed, and none for a row that did not", () => {
+    const same = outcome({ hash: "eeeeeeee" });
+    const verdict = (over: Partial<Outcome>) =>
+      compareVerdict(both(same, outcome({ hash: "ffffffff", ...over })));
+    expect(verdict({ blocked: 2, refusedByDefense: 1 })).toBe(
+      "With the defenses: 3 more attack steps stopped at a boundary.",
     );
+    expect(verdict({ interlockingsDown: 1 })).toBe(
+      "With the defenses: 1 more interlocking out of service.",
+    );
+    expect(verdict({ alerts: 1, detectedAt: 130 })).toBe(
+      "With the defenses: 1 more IDS alert, the intruder is noticed.",
+    );
+    const noticed = (over: Partial<Outcome>) =>
+      compareVerdict(
+        both(
+          outcome({ hash: "eeeeeeee", detectedAt: 200 }),
+          outcome({ hash: "ffffffff", detectedAt: 200, ...over }),
+        ),
+      );
+    expect(noticed({ detectedAt: 150 })).toBe(
+      "With the defenses: the intruder is noticed 5 s sooner.",
+    );
+    expect(noticed({ detectedAt: 300 })).toBe(
+      "With the defenses: the intruder is noticed 10 s later.",
+    );
+    expect(noticed({ detectedAt: 0 })).toBe("With the defenses: the intruder goes unnoticed.");
+  });
+
+  it("marks each row better, worse or same by its numbers", () => {
+    const change = (u: Partial<Outcome>, d: Partial<Outcome>, label: string) =>
+      compareRows(both(outcome(u), outcome({ hash: "9", ...d })), 1000).find(
+        (r) => r.label === label,
+      )?.change;
+    // Fewer is better for the damage rows.
+    expect(change({}, { signalsAtStop: 2 }, "Signals at stop")).toBe("better");
+    expect(change({}, { signalsAtStop: 15 }, "Signals at stop")).toBe("worse");
+    expect(change({}, {}, "Signals at stop")).toBe("same");
+    expect(change({}, { trainsStanding: 1 }, "Trains standing")).toBe("better");
+    expect(change({}, { compromised: [] }, "Machines compromised")).toBe("better");
+    expect(change({}, { commandChannelLost: [] }, "Command channels lost")).toBe("better");
+    expect(change({}, { interlockingsDown: 2 }, "Interlockings out of service")).toBe("worse");
+    // More is better for what the defenses caught.
+    expect(change({}, { blocked: 1 }, "Attack steps stopped at a boundary")).toBe("better");
+    expect(
+      change({ blocked: 2 }, { refusedByDefense: 1 }, "Attack steps stopped at a boundary"),
+    ).toBe("worse");
+    expect(change({}, { alerts: 2 }, "IDS alerts")).toBe("better");
+    expect(change({ alerts: 2 }, {}, "IDS alerts")).toBe("worse");
+    // Detected beats undetected, earlier beats later.
+    expect(change({}, { detectedAt: 200 }, "Time to detect")).toBe("better");
+    expect(change({ detectedAt: 200 }, {}, "Time to detect")).toBe("worse");
+    expect(change({ detectedAt: 300 }, { detectedAt: 200 }, "Time to detect")).toBe("better");
+    expect(change({ detectedAt: 200 }, { detectedAt: 300 }, "Time to detect")).toBe("worse");
+    expect(change({ detectedAt: 200 }, { detectedAt: 200 }, "Time to detect")).toBe("same");
+    expect(change({}, {}, "Time to detect")).toBe("same");
+  });
+
+  it("marks every row same when the figures are identical", () => {
+    const rows = compareRows(both(outcome(), outcome({ hash: "dddddddd" })), 1000);
+    expect(rows.every((r) => r.change === "same")).toBe(true);
   });
 
   it("does not invent an effect when both runs end the same", () => {
@@ -279,6 +347,19 @@ describe("the comparison on the page", () => {
     expect(rows).toHaveLength(8);
     const cells = rows[0]?.children.map((c) => c.textContent);
     expect(cells).toEqual(["Signals at stop", "12 of 19", "2 of 19"]);
+    // The defended cell carries the row's change; the undefended one carries none.
+    expect(rows[0]?.children[2]?.attrs["data-change"]).toBe("better");
+    expect(rows[0]?.children[1]?.attrs["data-change"]).toBeUndefined();
+    expect(rows.map((r) => r.children[2]?.attrs["data-change"])).toEqual([
+      "better",
+      "better",
+      "better",
+      "better",
+      "same",
+      "better",
+      "same",
+      "same",
+    ]);
     expect(byId.get("compare-table")?.hidden).toBe(false);
     expect(byId.get("compare-verdict")?.textContent).toMatch(/^With the defenses: /);
   });

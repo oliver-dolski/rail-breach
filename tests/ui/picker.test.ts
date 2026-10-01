@@ -5,7 +5,7 @@ import { phishingDispatcher } from "../../src/content/scenarios/phishing-dispatc
 import { techniques } from "../../src/content/techniques";
 import { buildMapperContext, validTargets } from "../../src/mapper/context";
 import type { TechniqueEntry } from "../../src/mapper/types";
-import { filterTechniques, launchAction, rowLabel } from "../../src/ui/panel/picker";
+import { filterTechniques, launchAction, launchNote, rowLabel } from "../../src/ui/panel/picker";
 
 const ctx = buildMapperContext(network, techniques);
 const ids = (query: string): string[] => filterTechniques(ctx.techniques, query).map((t) => t.id);
@@ -59,6 +59,21 @@ describe("the technique picker's search", () => {
       "T1692.002 (was T0856) Unauthorized Message: Reporting Message",
     );
     expect(rowLabel(entry("T0865"))).toBe("T0865 Spearphishing Attachment");
+  });
+});
+
+describe("the note after a launch", () => {
+  it("says the technique was sent and that the log shows whether it took", () => {
+    expect(launchNote("T0840", "Dispatcher WS")).toBe(
+      "Sent T0840 to Dispatcher WS. The log shows whether it took.",
+    );
+  });
+
+  it("never claims a launch, for any technique, since the engine may refuse it", () => {
+    for (const t of ctx.techniques) {
+      expect(launchNote(t.id, "Internet")).not.toMatch(/launched/i);
+      expect(launchNote(t.id, "Internet")).toMatch(/log shows whether it took/);
+    }
   });
 });
 
