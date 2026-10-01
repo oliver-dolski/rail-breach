@@ -37,6 +37,7 @@ import { catalog, entryFor } from "./catalog";
 import { compareSession, defenseCount } from "./compare";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
+import { watchReducedMotion } from "./motion";
 import { attempt, browserTimers, CONTEXT_RESTORE_GRACE_MS, createLossGuard } from "./recovery";
 import { createAttractSession } from "./session";
 import { switchScenario } from "./switch";
@@ -122,7 +123,12 @@ function boot(): void {
   const viewToggle = createViewToggle(document);
   /** The last world whose operator feed was good: what a frozen console keeps showing. */
   let lastGood: World | undefined;
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // The OS setting can change while the show runs; the map and the flashes follow it live.
+  const motion = watchReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)"), (on) => {
+    reducedMotion = on;
+    renderer?.setReducedMotion(on);
+  });
+  let reducedMotion = motion.current();
 
   const fallbackEls = {
     canvas,

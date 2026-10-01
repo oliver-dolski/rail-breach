@@ -41,21 +41,29 @@ export class MapRenderer {
   private fit: Geometry = { scale: 1, ox: 0, oy: 0 };
   private readonly ambient: Float32Array;
   private readonly ambientCount: number;
+  private reducedMotion: boolean;
 
   constructor(
     private readonly gl: WebGL2RenderingContext,
     private readonly layout: Layout,
     content: Content,
-    private readonly options: RendererOptions,
+    options: RendererOptions,
   ) {
-    // Ambient traffic is decoration that moves: with reduced motion it is left out.
-    const list = options.reducedMotion ? [] : ambientParticles(content, layout);
+    // The list is always built: whether the ambient traffic is drawn follows the preference,
+    // which can change while the show runs.
+    this.reducedMotion = options.reducedMotion;
+    const list = ambientParticles(content, layout);
     this.ambient = new Float32Array(Math.max(1, list.length) * PARTICLE_FLOATS);
     list.forEach((p, i) => {
       writeParticle(this.ambient, i * PARTICLE_FLOATS, p);
     });
     this.ambientCount = list.length;
     this.rebuild();
+  }
+
+  /** Follows the reduced-motion preference: with it on the ambient traffic is left out and the bloom is softer. */
+  setReducedMotion(on: boolean): void {
+    this.reducedMotion = on;
   }
 
   /** Creates all GL resources again. Safe to call after webglcontextrestored. */
@@ -108,11 +116,11 @@ export class MapRenderer {
     this.drawAmbient(gl, res.prims, frame);
     drawParticles(gl, res.prims, ring, frame);
 
-    runBloom(gl, res.post, this.options.reducedMotion ? 0.5 : 0.8);
+    runBloom(gl, res.post, this.reducedMotion ? 0.5 : 0.8);
   }
 
   private drawAmbient(gl: WebGL2RenderingContext, prims: Primitives, frame: Frame): void {
-    if (this.ambientCount === 0) return;
+    if (this.reducedMotion || this.ambientCount === 0) return;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
     prims.particles.draw(gl, this.ambient, this.ambientCount, {
