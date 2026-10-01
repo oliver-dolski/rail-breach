@@ -2,7 +2,7 @@ import type { Layout } from "../content/layout";
 import type { World } from "../core/sim/world";
 import type { NodeVisualState } from "../render/palette";
 import type { Geometry } from "../render/renderer";
-import { nodeVisualState } from "../render/view";
+import { CONDUIT_LABEL_DY, nodeVisualState } from "../render/view";
 import { h } from "./dom";
 
 /**
@@ -22,6 +22,8 @@ export function createLabels(
   container: HTMLElement,
   layout: Layout,
   conduitMarks: readonly { id: string; label: string; x: number; y: number }[] = [],
+  /** Called with a conduit's id when its caption is clicked; the id comes from content, not the page. */
+  onConduit?: (id: string) => void,
 ): Labels {
   interface Item {
     el: HTMLElement;
@@ -45,7 +47,12 @@ export function createLabels(
     nodeEls.set(id, add("lbl lbl-node", n.label, n.x, n.y, 15));
   }
   for (const s of layout.stations) add("lbl lbl-station", s.name, s.x, s.y);
-  for (const c of conduitMarks) add("lbl lbl-conduit", c.label, c.x, c.y, -7);
+  for (const c of conduitMarks) {
+    const el = add("lbl lbl-conduit", c.label, c.x, c.y, CONDUIT_LABEL_DY);
+    el.setAttribute("data-conduit", c.id);
+    // The listener closes over the id from content; the attribute is for tests and styling only.
+    if (onConduit !== undefined) el.addEventListener("click", () => onConduit(c.id));
+  }
 
   const lastState = new Map<string, NodeVisualState>();
   return {

@@ -109,6 +109,9 @@ body {
   letter-spacing: 0.06em;
   color: #7f8b9b;
   transform: translateX(-50%);
+  /* A caption is a click target for the armed defense; the other labels let clicks through. */
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .lbl-station {

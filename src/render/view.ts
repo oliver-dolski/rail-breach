@@ -124,8 +124,11 @@ export interface ViewContext {
   layout: Layout;
   links: { id: string; a: Pt; b: Pt; conduit: string }[];
   linkById: Map<string, { a: Pt; b: Pt }>;
-  /** Where each conduit's caption goes: the mean of the middles of its links. */
-  conduitMarks: { id: string; label: string; x: number; y: number }[];
+  /**
+   * Where each conduit's caption goes: the middle of its first link in content order, so
+   * the caption always sits on a line the conduit really has. `link` is that link's id.
+   */
+  conduitMarks: { id: string; label: string; x: number; y: number; link: string }[];
   zones: LineInstance[];
   blocks: Map<string, Polyline>;
   drawBlocks: DrawBlock[];
@@ -174,11 +177,15 @@ export function createViewContext(content: Content, index: Index, layout: Layout
 
   const conduitMarks: ViewContext["conduitMarks"] = [];
   for (const conduit of content.conduits) {
-    const members = links.filter((l) => l.conduit === conduit.id);
-    if (members.length === 0) continue;
-    const x = members.reduce((sum, l) => sum + (l.a.x + l.b.x) / 2, 0) / members.length;
-    const y = members.reduce((sum, l) => sum + (l.a.y + l.b.y) / 2, 0) / members.length;
-    conduitMarks.push({ id: conduit.id, label: layout.conduits[conduit.id] ?? conduit.name, x, y });
+    const first = links.find((l) => l.conduit === conduit.id);
+    if (first === undefined) continue;
+    conduitMarks.push({
+      id: conduit.id,
+      label: layout.conduits[conduit.id] ?? conduit.name,
+      x: (first.a.x + first.b.x) / 2,
+      y: (first.a.y + first.b.y) / 2,
+      link: first.id,
+    });
   }
 
   const zones: LineInstance[] = [];
@@ -277,9 +284,33 @@ export function nearestConduit(ctx: ViewContext, at: Pt, maxDistance: number): s
   return best;
 }
 
+/** How far above a conduit caption's anchor its top edge sits, in map units (see labels.ts). */
+export const CONDUIT_LABEL_DY = -7;
+
+/**
+ * The box a conduit caption covers, in map units. The numbers are the caption's style in
+ * style.css (`.lbl-conduit`): 9 px monospace with 0.06em letter-spacing, so each character
+ * takes about 6.2 px (0.6 x 9 + 0.06 x 9), drawn at one CSS pixel per map unit, centred on
+ * x (translateX(-50%)) with its top at y + CONDUIT_LABEL_DY.
+ */
+export function conduitLabelBox(mark: { label: string; x: number; y: number }): {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+} {
+  const width = mark.label.length * 6.2;
+  const top = mark.y + CONDUIT_LABEL_DY;
+  return { x0: mark.x - width / 2, y0: top, x1: mark.x + width / 2, y1: top + 9 };
+}
+
 const DEFENSE_GLYPH_RADIUS = 7;
-/** Glyphs of several defenses on one link sit this far apart along it. */
-const DEFENSE_STACK_STEP = 16;
+/** Defense glyphs stay this far from a link's middle, where its conduit caption sits. */
+const LABEL_CLEARANCE = 40;
+/** Further glyphs on one link follow at this spacing: twice the radius plus 6. */
+const DEFENSE_STACK_STEP = 20;
+/** A glyph keeps this far from the end of its link, so it never sits on a machine. */
+const LINK_END_MARGIN = 12;
 
 /**
  * The glyph of every placed defense, and the arrow of every diode. A firewall is a
@@ -308,7 +339,10 @@ function defenseGlyphs(
     const uy = dy / len;
     const slot = stacked.get(defense.link) ?? 0;
     stacked.set(defense.link, slot + 1);
-    const along = slot * DEFENSE_STACK_STEP;
+    // Slots alternate either side of the middle (towards b first), clear of the caption.
+    const side = slot % 2 === 0 ? 1 : -1;
+    const wanted = LABEL_CLEARANCE + Math.floor(slot / 2) * DEFENSE_STACK_STEP;
+    const along = side * Math.min(wanted, Math.max(0, len / 2 - LINK_END_MARGIN));
     const x = (link.a.x + link.b.x) / 2 + ux * along;
     const y = (link.a.y + link.b.y) / 2 + uy * along;
     const live = world.tick >= defense.activeFrom;

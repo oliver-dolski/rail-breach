@@ -16,7 +16,13 @@ import {
   SHAPE,
   SIGNAL_HUES,
 } from "../../src/render/palette";
-import { buildView, createViewContext, nearestConduit } from "../../src/render/view";
+import {
+  buildView,
+  CONDUIT_LABEL_DY,
+  conduitLabelBox,
+  createViewContext,
+  nearestConduit,
+} from "../../src/render/view";
 import { placedRows, placementFor } from "../../src/ui/panel/defense";
 import { networkIndex, run } from "../fixtures/attack";
 
@@ -37,6 +43,18 @@ const midpoint = (linkId: string) => {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 };
 
+/** Distance from a point to the segment of a link, in map units. */
+const distanceToLink = (p: { x: number; y: number }, linkId: string): number => {
+  const link = network.links.find((l) => l.id === linkId);
+  const a = layout.nodes[link?.a ?? ""];
+  const b = layout.nodes[link?.b ?? ""];
+  if (!a || !b) throw new Error(`no layout for ${linkId}`);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const f = Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(p.x - (a.x + f * dx), p.y - (a.y + f * dy));
+};
+
 const worldWith = (actions: TimedAction[], toTick: number) =>
   run(createWorld(network, 1), index, actions, toTick).world;
 
@@ -49,9 +67,9 @@ describe("a placed defense on the map", () => {
 
     const view = buildView(worldWith([place(1, firewall)], 2), ctx);
     expect(view.defenses).toHaveLength(members.length);
-    const spots = members.map((l) => midpoint(l.id));
+    // Pins the new placement: a glyph lies on its link, clear of the middle where the caption sits.
     for (const glyph of view.defenses) {
-      expect(spots).toContainEqual({ x: glyph.x, y: glyph.y });
+      expect(members.some((l) => distanceToLink(glyph, l.id) < 0.001)).toBe(true);
       expect(glyph.shape).toBe(SHAPE.disc);
     }
   });
@@ -190,6 +208,72 @@ describe("zones and conduits on the map", () => {
     for (const mark of ctx.conduitMarks) {
       expect(mark.label).toBe(layout.conduits[mark.id]);
       expect(Number.isFinite(mark.x) && Number.isFinite(mark.y)).toBe(true);
+    }
+  });
+});
+
+describe("conduit captions", () => {
+  it("every caption lies on one of its own links, and a pick at its centre returns its conduit", () => {
+    for (const mark of ctx.conduitMarks) {
+      const link = network.links.find((l) => l.id === mark.link);
+      expect(link?.conduit, mark.id).toBe(mark.id);
+      expect(distanceToLink(mark, mark.link), mark.id).toBeLessThan(0.001);
+      const box = conduitLabelBox(mark);
+      const centre = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
+      expect(nearestConduit(ctx, centre, 14), mark.id).toBe(mark.id);
+    }
+  });
+
+  it("sits above the line it names: the box starts CONDUIT_LABEL_DY from the anchor and is 9 high", () => {
+    const box = conduitLabelBox({ label: "Net-Corp", x: 100, y: 50 });
+    expect(box.y0).toBe(50 + CONDUIT_LABEL_DY);
+    expect(box.y1 - box.y0).toBe(9);
+    expect((box.x0 + box.x1) / 2).toBe(100);
+  });
+
+  it("is never covered by a defense glyph, with all three kinds on every conduit, and glyphs keep apart", () => {
+    const actions: TimedAction[] = [];
+    let t = 1;
+    for (const conduit of network.conduits) {
+      for (const kind of ["firewall", "diode", "ids"] as const) {
+        actions.push(
+          place(
+            t++,
+            kind === "diode"
+              ? {
+                  type: "defense.place",
+                  kind,
+                  on: { conduit: conduit.id },
+                  config: { direction: "a-to-b" },
+                }
+              : { type: "defense.place", kind, on: { conduit: conduit.id } },
+          ),
+        );
+      }
+    }
+    const world = worldWith(actions, t + DEFENSE_PLACEMENT_LATENCY_TICKS);
+    const view = buildView(world, ctx);
+    expect(view.defenses).toHaveLength(
+      3 * network.links.filter((l) => (l.conduit ?? "") !== "").length,
+    );
+    const RADIUS = 7;
+    for (const glyph of view.defenses) {
+      for (const mark of ctx.conduitMarks) {
+        const box = conduitLabelBox(mark);
+        // Distance from the glyph's centre to the nearest point of the box.
+        const nx = Math.min(box.x1, Math.max(box.x0, glyph.x));
+        const ny = Math.min(box.y1, Math.max(box.y0, glyph.y));
+        expect(Math.hypot(glyph.x - nx, glyph.y - ny), `${mark.id} caption`).toBeGreaterThan(
+          RADIUS,
+        );
+      }
+    }
+    // The glyphs come in the order of world.defenses, so each one's link is known.
+    for (const [i, g] of view.defenses.entries()) {
+      for (const [j, other] of view.defenses.entries()) {
+        if (j <= i || world.defenses[i]?.link !== world.defenses[j]?.link) continue;
+        expect(Math.hypot(g.x - other.x, g.y - other.y)).toBeGreaterThanOrEqual(2 * RADIUS + 4);
+      }
     }
   });
 });

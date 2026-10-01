@@ -88,7 +88,6 @@ function boot(): void {
   const log = new EventLog(names);
   const panel = createPanel(document);
   let viewContext = createViewContext(network, session.index, layout);
-  const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks);
   const sessionNote = byId("session-note");
   /** Hands an action to the session and says so on the page when it was refused. */
   const submit = (action: Action): void => setText(sessionNote, session.dispatch(action) ?? "");
@@ -97,6 +96,10 @@ function boot(): void {
     onAction: submit,
     onReset: () => session.reset(),
   });
+  // A conduit caption is a click target too: it places the armed defense like a click on the line.
+  const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks, (id) =>
+    defenses.place(id),
+  );
   const mapperContext = buildMapperContext(network, techniques);
   createPicker(document, { ctx: mapperContext, onAction: submit });
   // With no key the LLM mapper hands straight over to the keywords, and it does so on any failure too.
