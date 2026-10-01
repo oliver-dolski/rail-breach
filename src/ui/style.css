@@ -645,6 +645,36 @@ button.plain:disabled {
   color: var(--muted);
 }
 
+/* The MITRE attribution is a legal notice, so it stays whole and readable but sits quietly under the disclaimer. */
+.panel-foot .attribution {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+/* The dispatcher palette link colour (the detection cyan, 9:1 on the panel), underlined so it is not colour alone. */
+.attribution a {
+  color: var(--detection);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  white-space: nowrap;
+}
+
+.attribution a:hover {
+  color: var(--text);
+}
+
+/* Same ring as the buttons and fields; an outline takes no room, so focusing the link shifts nothing. */
+.attribution a:focus-visible {
+  outline: 2px solid var(--detection);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 @keyframes breathe {
   0%,
   100% {

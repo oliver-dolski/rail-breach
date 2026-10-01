@@ -101,3 +101,12 @@ describe("LICENSE", () => {
     },
   );
 });
+
+describe("the attribution footer style", () => {
+  const css = read("src/ui/style.css");
+
+  it("gives the terms link its own colour and a visible keyboard focus ring", () => {
+    expect(css).toMatch(/\.attribution a \{[^}]*color: var\(--detection\)/);
+    expect(css).toMatch(/\.attribution a:focus-visible \{[^}]*outline: 2px solid/);
+  });
+});
