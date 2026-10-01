@@ -88,6 +88,7 @@ describe("deploy workflow", () => {
       .filter((run): run is string => run !== undefined);
     expect(runs).toEqual([
       "npm ci",
+      "npm run scan:history",
       "npm run typecheck",
       "npm run typecheck:core",
       "npm run lint",
@@ -95,6 +96,19 @@ describe("deploy workflow", () => {
       "npm run build",
       "npm test",
     ]);
+  });
+
+  it("scans the full history right after the install, on a full checkout", () => {
+    const checkout = lines.findIndex((line) => line.includes("actions/checkout@"));
+    expect(lines.slice(checkout + 1, checkout + 5).join("\n")).toContain("fetch-depth: 0");
+    expect(text.split("fetch-depth: 0").length - 1).toBe(1);
+    expect(text.split("scan:history").length - 1).toBe(1);
+    const scan = lines.findIndex((line) => /^\s+run:\s*npm run scan:history\s*$/.test(line));
+    expect(scan).toBeGreaterThan(-1);
+    expect(lines.slice(scan - 2, scan).join("\n")).toContain("name: Scan the git history");
+    const install = lines.findIndex((line) => /^\s+run:\s*npm ci\s*$/.test(line));
+    expect(scan).toBeGreaterThan(install);
+    expect(joined(deployJob)).not.toContain("scan:history");
   });
 
   it("triggers on push to main, pull requests and manual runs", () => {
