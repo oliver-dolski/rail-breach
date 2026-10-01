@@ -17,6 +17,7 @@
     "test": "vitest run",
     "lint": "biome check .",
     "lint:core": "node scripts/check-core-determinism.mjs",
+    "smoke": "node scripts/smoke.mjs",
     "recordings:regen": "node scripts/regen-recordings.mjs",
     "fallback:regen": "node scripts/make-fallback.mjs",
     "prepare": "git config core.hooksPath .githooks || echo hooks not installed: not a git checkout"
