@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { execFile, execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -541,6 +542,212 @@ describe("scan-history: binary blobs, size and identities", () => {
     expect(result.out).toContain("identities=2");
     for (const who of ["Ann Example <ann@example.test>", "Bob Example <bob@example.test>"]) {
       expect(result.out.split(`identity: ${who}`).length - 1).toBe(1);
+    }
+  });
+});
+
+// Made-up local layers: none of these phrases belongs to a real tool, employer or operator.
+const DENY_FILE = "# local phrases\n\nAcme Helper Bot\nbot@example.test\nzorbtool\n";
+const LITERAL_FILE = "# literals\nGlobex Rail\ncs:ACME\n";
+
+function layers(dir: string, { deny = DENY_FILE, literals = LITERAL_FILE, allow = "" } = {}) {
+  info(dir, "commit-msg-deny", deny);
+  info(dir, "history-scan-deny", literals);
+  info(dir, "history-scan-allow", allow);
+}
+
+const warningLines = (out: string) => out.split("\n").filter((line) => line.startsWith("WARNING"));
+
+describe("scan-history: local layers", () => {
+  it("fails a multi-word or address-shaped deny phrase in messages, blobs, binary blobs, paths and identities", async () => {
+    const dir = fixture();
+    layers(dir);
+    const msg = commit(dir, { "a.txt": "alpha\n" }, "thanks to acme   HELPER bot for this");
+    commit(dir, { "docs/b.txt": "made by Acme  Helper\nBot\n" }, "add b");
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
+    commit(dir, { "img/c.png": Buffer.concat([png, Buffer.from("mail bot@example.test\0")]) }, "c");
+    commit(dir, { "Acme Helper Bot/readme.txt": "x\n" }, "add folder");
+    commit(dir, { "d.txt": "d\n" }, "add d", "Someone <someone@example.test>");
+    commit(dir, { "e.txt": "e\n" }, "add e", "Acme Helper Bot <x@example.test>");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    const denied = /denied[- ]phrase/;
+    expect(linesFor(result.out, "(message)").join("\n")).toMatch(denied);
+    expect(linesFor(result.out, "(message)").join("\n")).toContain(short(msg));
+    expect(linesFor(result.out, "docs/b.txt")[0] ?? "").toMatch(denied);
+    expect(linesFor(result.out, "img/c.png")[0] ?? "").toMatch(denied);
+    expect(linesFor(result.out, "Acme Helper Bot/readme.txt")[0] ?? "").toMatch(denied);
+    expect(linesFor(result.out, "(author)")[0] ?? "").toMatch(denied);
+    expect(linesFor(result.out, "(committer)")[0] ?? "").toMatch(denied);
+    expect(result.out).not.toContain("d.txt");
+    // The scan points at the line of the list, it does not repeat the phrase.
+    expect(linesFor(result.out, "docs/b.txt")[0] ?? "").toContain("commit-msg-deny line 3");
+    expect(linesFor(result.out, "img/c.png")[0] ?? "").not.toContain("bot@example.test");
+  });
+
+  it("fails a single-word deny phrase unless its token is declared for that very path", async () => {
+    const dir = fixture();
+    const allow = [
+      "# declared tokens",
+      "",
+      `src/a.ts\tzorbtool-sdk\tfunctional`,
+      `src/c.ts\tzorbtool-sdk`,
+      `src/d.ts\tzorbtool-sdk\tfunctional`,
+      "",
+    ].join("\n");
+    layers(dir, { allow });
+    commit(
+      dir,
+      {
+        "src/a.ts": 'import "zorbtool-sdk";\n',
+        "src/b.ts": 'import "zorbtool-sdk";\n',
+        "src/c.ts": 'import "zorbtool-extra";\n',
+        "src/d.ts": 'import "zorbtool-sdk"; // and zorbtool-more\n',
+        "src/e.ts": "plain ZorbTool word\n",
+      },
+      "add sources",
+    );
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    expect(result.out).not.toContain("src/a.ts");
+    expect(linesFor(result.out, "src/b.ts")[0] ?? "").toContain("zorbtool-sdk");
+    expect(linesFor(result.out, "src/c.ts")[0] ?? "").toContain("zorbtool-extra");
+    expect(linesFor(result.out, "src/d.ts")[0] ?? "").toContain("zorbtool-more");
+    expect(linesFor(result.out, "src/d.ts").join("\n")).not.toContain("zorbtool-sdk");
+    expect(linesFor(result.out, "src/e.ts")[0] ?? "").toContain("ZorbTool");
+  });
+
+  it("passes when every occurrence is declared, and never excuses messages or paths", async () => {
+    const dir = fixture();
+    layers(dir, { allow: "src/a.ts\tzorbtool-sdk\tfunctional\n" });
+    commit(dir, { "src/a.ts": 'import "zorbtool-sdk";\n' }, "add source");
+    const clean = await scan(dir, "--require-local");
+    expect(clean.code).toBe(0);
+    commit(dir, { "src/z.txt": "z\n" }, "mention zorbtool in a message");
+    commit(dir, { "zorbtool/readme.txt": "z\n" }, "add folder");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    expect(linesFor(result.out, "(message)").length).toBe(1);
+    expect(linesFor(result.out, "zorbtool/readme.txt").length).toBe(1);
+  });
+
+  it("applies the operator literals to messages, blobs, paths and identities", async () => {
+    const dir = fixture();
+    layers(dir);
+    commit(dir, { "a.txt": "see Globex   rail\n" }, "add a");
+    commit(dir, { "b.txt": "an ACME unit\n" }, "add b");
+    commit(dir, { "c.txt": "an acme unit, ACMEX and ACMEs and lowercase acme\n" }, "add c");
+    commit(dir, { "d.txt": "d\n" }, "visit GLOBEX RAIL");
+    commit(dir, { "ACME/e.txt": "e\n" }, "add e");
+    commit(dir, { "f.txt": "f\n" }, "add f", "ACME Ops <ops@example.test>");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    const literal = /operator-literal/;
+    expect(linesFor(result.out, "a.txt")[0] ?? "").toMatch(literal);
+    expect(linesFor(result.out, "b.txt")[0] ?? "").toMatch(literal);
+    expect(result.out).not.toContain("c.txt");
+    expect(linesFor(result.out, "(message)")[0] ?? "").toMatch(literal);
+    expect(linesFor(result.out, "ACME/e.txt")[0] ?? "").toMatch(literal);
+    expect(linesFor(result.out, "(author)")[0] ?? "").toMatch(literal);
+    expect(linesFor(result.out, "a.txt")[0] ?? "").toContain("history-scan-deny line 2");
+  });
+
+  it("runs the shape rules alone and warns once per skipped layer when no local file exists", async () => {
+    const dir = fixture();
+    commit(dir, { "a.txt": "alpha\n" }, "add alpha");
+    const result = await scan(dir);
+    expect(result.code).toBe(0);
+    const warnings = warningLines(result.out);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.join("\n")).toContain("commit-msg-deny");
+    expect(warnings.join("\n")).toContain("history-scan-deny");
+    const bad = commit(dir, { "b.txt": `x ${EM_DASH} y\n` }, "add b");
+    const again = await scan(dir);
+    expect(again.code).toBe(1);
+    expect(again.out).toContain(short(bad));
+  });
+
+  it("treats a missing local file as a violation with --require-local, naming each one", async () => {
+    const dir = fixture();
+    commit(dir, { "a.txt": "alpha\n" }, "add alpha");
+    const result = await scan(dir, "--require-local");
+    expect(result.code).toBe(1);
+    for (const name of ["commit-msg-deny", "history-scan-deny", "history-scan-allow"]) {
+      expect(linesFor(result.out, `.git/info/${name}`)[0] ?? "", name).toContain(
+        "missing-local-file",
+      );
+    }
+    layers(dir);
+    expect((await scan(dir, "--require-local")).code).toBe(0);
+    info(dir, "history-scan-allow", "not a valid line\n");
+    expect((await scan(dir)).code).toBe(2);
+  });
+
+  it("lists every occurrence of a single-word phrase with --inventory and exits 0", async () => {
+    const dir = fixture();
+    layers(dir, { allow: "src/a.ts\tzorbtool-sdk\tfunctional\n" });
+    const first = commit(
+      dir,
+      { "src/a.ts": 'import "zorbtool-sdk"; // zorbtool-sdk\n', "src/b.ts": "zorbtool-sdk\n" },
+      "add sources",
+    );
+    commit(dir, { "src/b.ts": `x ${EM_DASH} y zorbtool-sdk\n` }, "edit b");
+    const result = await scan(dir, "--inventory");
+    expect(result.code).toBe(0);
+    const a = linesFor(result.out, "src/a.ts");
+    expect(a).toHaveLength(1);
+    expect(a[0]).toContain("zorbtool-sdk");
+    expect(a[0]).toContain("count=2");
+    expect(a[0]).toContain(short(first));
+    expect(a[0]).toContain("declared=yes");
+    const b = linesFor(result.out, "src/b.ts");
+    expect(b).toHaveLength(1);
+    expect(b[0]).toContain("count=2");
+    expect(b[0]).toContain("declared=no");
+    expect(result.out).not.toContain("long-dash");
+  });
+
+  it("keeps the sk-test- placeholder out of the key rule and nothing else", async () => {
+    const dir = fixture();
+    const placeholder = ["sk", "-", "test", "-", "0123456789abcdefghijklmnop"].join("");
+    const other = ["sk", "-", "live", "-", "0123456789abcdefghijklmnop"].join("");
+    commit(dir, { "ok.txt": `${placeholder}\n`, "bad.txt": `${other}\n` }, "add keys");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    expect(linesFor(result.out, "bad.txt")[0] ?? "").toContain("key-shape");
+    expect(result.out).not.toContain("ok.txt");
+  });
+});
+
+describe("scan-history: tracked sources hold none of the private phrases", () => {
+  const infoDir = join(ROOT, ".git", "info");
+  const lists = ["commit-msg-deny", "history-scan-deny"].map((name) => join(infoDir, name));
+  const present = lists.filter((file) => existsSync(file));
+
+  it.skipIf(present.length === 0)("contain no line of this repository's local lists", () => {
+    const quote = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // The same matching the scan applies: plain lines loosely, cs: lines as exact whole words.
+    const matchers = present
+      .flatMap((file) => readFileSync(file, "utf8").split(/\r?\n/))
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"))
+      .map((line) =>
+        line.startsWith("cs:")
+          ? new RegExp(`(?<![A-Za-z0-9])${quote(line.slice(3))}(?![A-Za-z0-9])`)
+          : new RegExp(line.split(/\s+/).map(quote).join("\\s+"), "i"),
+      );
+    expect(matchers.length).toBeGreaterThan(0);
+    for (const source of [
+      "scripts/scan-history.mjs",
+      "scripts/lib/hygiene.mjs",
+      "scripts/check-commit-msg.mjs",
+      "tests/scripts/scan-history.test.ts",
+    ]) {
+      const text = readFileSync(join(ROOT, source), "utf8");
+      for (const [index, matcher] of matchers.entries()) {
+        // Name the entry by position, never by content.
+        expect(matcher.test(text), `${source} holds local list entry ${index + 1}`).toBe(false);
+      }
     }
   });
 });
