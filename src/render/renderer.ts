@@ -2,6 +2,7 @@ import * as twgl from "twgl.js";
 import type { Layout } from "../content/layout";
 import type { Content } from "../content/types";
 import { TICKS_PER_SECOND } from "../core/sim/constants";
+import { type CameraPose, cameraFit, homeCamera } from "./camera";
 import { fitMap, viewUniform } from "./geometry";
 import { disposeGL, type GlResources, initGL } from "./gl/context";
 import { disposePost, runBloom, sizePost } from "./gl/post";
@@ -56,7 +57,11 @@ export class MapRenderer {
   private res: GlResources | undefined;
   private width = 1;
   private height = 1;
+  /** The fit of the whole sheet in the canvas: the camera at home. */
+  private home: Geometry = { scale: 1, ox: 0, oy: 0 };
+  /** The fit under the camera pose: what the shaders, the labels and the click pick all use. */
   private fit: Geometry = { scale: 1, ox: 0, oy: 0 };
+  private pose: CameraPose;
   private readonly ambient: Float32Array;
   private readonly ambientCount: number;
   private reducedMotion: boolean;
@@ -72,6 +77,7 @@ export class MapRenderer {
     // The list is always built: whether the ambient traffic is drawn follows the preference,
     // which can change while the show runs.
     this.reducedMotion = options.reducedMotion;
+    this.pose = homeCamera(layout);
     // The capture build always runs the tier the GPU offers: nothing steps it down mid-recording.
     this.governor = new FrameGovernor(!options.capture);
     this.current = chooseTier(gl);
@@ -143,15 +149,30 @@ export class MapRenderer {
     this.res = undefined;
   }
 
-  /** Current fit of the map sheet in the canvas, for positioning DOM labels. */
+  /** Where the follow camera is looking. Takes effect at the next draw and for every consumer of geometry(). */
+  setCamera(pose: CameraPose): void {
+    this.pose = pose;
+    this.fit = cameraFit(this.home, pose, this.layout);
+  }
+
+  /**
+   * The fit under the camera, for positioning DOM labels and for the click pick: the same
+   * transform the shaders draw with, so a click lands on what is drawn under the pointer.
+   */
   geometry(): Geometry {
     return this.fit;
+  }
+
+  /** The fit of the whole sheet, the camera at home. Its scale is the label font scale. */
+  homeGeometry(): Geometry {
+    return this.home;
   }
 
   resize(width: number, height: number): void {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
-    this.fit = fitMap(this.width, this.height, this.layout.width, this.layout.height);
+    this.home = fitMap(this.width, this.height, this.layout.width, this.layout.height);
+    this.fit = cameraFit(this.home, this.pose, this.layout);
     if (this.res?.post) sizePost(this.gl, this.res.post, this.width, this.height);
   }
 

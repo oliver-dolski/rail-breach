@@ -8,6 +8,7 @@ import type { World } from "../core/sim/world";
 import { buildMapperContext } from "../mapper/context";
 import { keywordMapper } from "../mapper/keyword";
 import { createLlmMapper } from "../mapper/llm";
+import { CameraTrack } from "../render/camera";
 import { AlertFlashes } from "../render/flashes";
 import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
@@ -124,6 +125,7 @@ function boot(): void {
   const ring = new ParticleRing();
   const flashes = new AlertFlashes();
   const trail = new AttackTrail(layout);
+  const camera = new CameraTrack(layout);
   const viewToggle = createViewToggle(document);
   /** The last world whose operator feed was good: what a frozen console keeps showing. */
   let lastGood: World | undefined;
@@ -171,12 +173,34 @@ function boot(): void {
   }
 
   let dpr = 1;
+  /** What the labels were last placed for, so a still camera costs no style writes. */
+  let placedFor: { scale: number; ox: number; oy: number; home: number; dpr: number } | undefined;
+  /** Moves the labels with the camera; their size follows the home fit, so they only slide. */
+  const placeLabels = (force: boolean): void => {
+    if (!renderer) return;
+    const fit = renderer.geometry();
+    const home = renderer.homeGeometry().scale;
+    const was = placedFor;
+    if (
+      !force &&
+      was !== undefined &&
+      was.scale === fit.scale &&
+      was.ox === fit.ox &&
+      was.oy === fit.oy &&
+      was.home === home &&
+      was.dpr === dpr
+    ) {
+      return;
+    }
+    placedFor = { scale: fit.scale, ox: fit.ox, oy: fit.oy, home, dpr };
+    labels.place(fit, dpr, home);
+  };
   const resize = (): void => {
     if (!renderer) return;
     const size = fitCanvas(canvas, window.devicePixelRatio);
     dpr = size.dpr;
     renderer.resize(size.width, size.height);
-    labels.place(renderer.geometry(), dpr);
+    placeLabels(true);
   };
   // A window dragged to a screen with another scale changes the pixel ratio
   // without resizing the canvas box, so the observer alone would miss it.
@@ -272,6 +296,7 @@ function boot(): void {
         ring.clear();
         flashes.clear();
         trail.clear();
+        camera.reset();
         timeline.reset();
         compare.reset();
         lastGood = undefined;
@@ -292,24 +317,37 @@ function boot(): void {
   selector.show(session.scenario.id);
   const target = {
     advance(ticks: number): void {
-      session.advance(ticks);
-      if (session.generation() !== seenGeneration) {
-        seenGeneration = session.generation();
-        log.reset();
-        ring.clear();
-        flashes.clear();
-        trail.clear();
-        timeline.reset();
-        compare.reset();
-        lastGood = undefined;
-      }
-      const events = session.drainEvents();
-      log.ingest(events, session.scenario.startTick);
-      timeline.ingest(events, session.scenario.startTick);
-      flashes.ingest(events);
-      trail.ingest(events);
-      for (const event of events) {
-        if (event.k === "packet") for (const p of packetParticles(event, layout)) ring.push(p);
+      // One tick at a time: the camera takes one step per simulation tick, whatever the frame length.
+      for (let i = 0; i < ticks; i++) {
+        const before = session.world();
+        session.advance(1);
+        // A halted or failed session does not tick, and the camera freezes with it.
+        if (session.world() === before) break;
+        if (session.generation() !== seenGeneration) {
+          seenGeneration = session.generation();
+          log.reset();
+          ring.clear();
+          flashes.clear();
+          trail.clear();
+          camera.reset();
+          timeline.reset();
+          compare.reset();
+          lastGood = undefined;
+        }
+        const events = session.drainEvents();
+        log.ingest(events, session.scenario.startTick);
+        timeline.ingest(events, session.scenario.startTick);
+        flashes.ingest(events);
+        trail.ingest(events);
+        for (const event of events) {
+          if (event.k === "packet") for (const p of packetParticles(event, layout)) ring.push(p);
+        }
+        camera.step({
+          world: session.world(),
+          zoneOfNode: viewContext.nodeZone,
+          enabled: true,
+          reducedMotion,
+        });
       }
     },
   };
@@ -331,6 +369,10 @@ function boot(): void {
       alerts: flashes.levels(phase, reducedMotion),
       trail: trail.lines(phase / TICKS_PER_SECOND, reducedMotion),
     });
+    if (renderer) {
+      renderer.setCamera(camera.pose(alpha));
+      placeLabels(false);
+    }
     renderer?.draw(view, ring);
     if (gate.changed(world.tick, session.status())) {
       labels.mark(world);

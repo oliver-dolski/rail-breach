@@ -104,3 +104,32 @@ describe("the conduit captions", () => {
     for (const el of created) expect(el.listeners).toBe(0);
   });
 });
+
+describe("placing the captions under the camera", () => {
+  it("sets the font scale from the home fit and the positions from the camera fit", () => {
+    const { doc, created } = fakeDocument();
+    const props: Record<string, string> = {};
+    const container = {
+      append() {},
+      style: {
+        setProperty(name: string, value: string) {
+          props[name] = value;
+        },
+      },
+    } as unknown as HTMLElement;
+    const labels = createLabels(doc, container, layout, marks);
+    const station = layout.stations[0];
+    if (!station) throw new Error("no station");
+    const el = created.find((e) => e.textContent === station.name);
+
+    labels.place({ scale: 1.5, ox: 20, oy: 10 }, 2);
+    expect(props["--u"]).toBe("0.75");
+    expect(el?.style.left).toBe(`${(20 + station.x * 1.5) / 2}px`);
+
+    // The camera zoomed in 1.3 times: positions move, the font scale stays the home one.
+    labels.place({ scale: 1.95, ox: -300, oy: -120 }, 2, 1.5);
+    expect(props["--u"]).toBe("0.75");
+    expect(el?.style.left).toBe(`${(-300 + station.x * 1.95) / 2}px`);
+    expect(el?.style.top).toBe(`${(-120 + station.y * 1.95) / 2}px`);
+  });
+});

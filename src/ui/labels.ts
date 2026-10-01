@@ -12,8 +12,12 @@ import { h } from "./dom";
  * and never goes through the shaders. All text is set as text, never as markup.
  */
 export interface Labels {
-  /** Re-places every label for a new canvas fit. `dpr` converts device to CSS pixels. */
-  place(fit: Geometry, dpr: number): void;
+  /**
+   * Re-places every label for a canvas fit. `dpr` converts device to CSS pixels. Positions follow
+   * `fit` (the camera); the font scale `--u` follows `fontScale` (the home fit), so under a
+   * zoom the labels keep their size and only move.
+   */
+  place(fit: Geometry, dpr: number, fontScale?: number): void;
   /** Marks node labels with the state the map draws them in. */
   mark(world: World): void;
 }
@@ -58,8 +62,8 @@ export function createLabels(
 
   const lastState = new Map<string, NodeVisualState>();
   return {
-    place(fit, dpr) {
-      const css = fit.scale / dpr;
+    place(fit, dpr, fontScale = fit.scale) {
+      const css = fontScale / dpr;
       container.style.setProperty("--u", String(css));
       for (const item of items) {
         item.el.style.left = `${(fit.ox + item.x * fit.scale) / dpr}px`;
