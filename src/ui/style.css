@@ -910,6 +910,24 @@ button.plain:disabled {
   color: var(--attacker);
 }
 
+/* The second cue next to the colour: a mark in front of the figure, and the same fact in words for a screen reader. */
+.compare .cue {
+  margin-right: 4px;
+  font-weight: bold;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .compare[hidden] {
   display: none;
 }

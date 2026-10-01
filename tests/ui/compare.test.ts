@@ -364,6 +364,43 @@ describe("the comparison on the page", () => {
     expect(byId.get("compare-verdict")?.textContent).toMatch(/^With the defenses: /);
   });
 
+  it("marks a changed cell with a second cue besides the colour, and leaves an equal cell bare", () => {
+    const { doc, byId } = fakeDocument();
+    const panel = createComparePanel(doc, {
+      defenseCount: () => 1,
+      // IDS alerts and the interlockings row differ from the held() default: worse alerts, equal rest.
+      run: () => both(outcome({ alerts: 4 }), held({ alerts: 1 })),
+      endTick: () => 1000,
+    });
+    panel.update();
+    byId.get("compare-run")?.click();
+    const cell = (label: string) =>
+      (byId.get("compare-body")?.children ?? []).find((r) => r.children[0]?.textContent === label)
+        ?.children[2];
+
+    // Better: a check mark hidden from assistive technology, the figure, and the words for it.
+    const better = cell("Signals at stop");
+    expect(better?.attrs["data-change"]).toBe("better");
+    expect(
+      better?.children.map((c) => [c.attrs.class, c.attrs["aria-hidden"], c.textContent]),
+    ).toEqual([
+      ["cue", "true", "✓"],
+      ["visually-hidden", undefined, " (better with the defenses)"],
+    ]);
+    expect(better?.textContent).toBe("2 of 19");
+
+    // Worse: the cross and the words for worse.
+    const worse = cell("IDS alerts");
+    expect(worse?.attrs["data-change"]).toBe("worse");
+    expect(worse?.children.map((c) => c.textContent)).toEqual(["✗", " (worse with the defenses)"]);
+
+    // Same: no marker element at all, only the figure.
+    const same = cell("Interlockings out of service");
+    expect(same?.attrs["data-change"]).toBe("same");
+    expect(same?.children).toEqual([]);
+    expect(same?.textContent).toBe("0");
+  });
+
   it("says when the result is out of date and forgets it on reset", () => {
     const { doc, byId } = fakeDocument();
     let count = 1;

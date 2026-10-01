@@ -151,6 +151,27 @@ export function compareVerdict(c: Comparison): string {
   return `With the defenses: ${parts.join(", ")}.`;
 }
 
+/**
+ * The second cue on a changed cell, so colour is never the only signal: a mark the eye reads
+ * at once (hidden from assistive technology) and the same fact in words for it. Equal cells
+ * carry neither.
+ */
+const CUES: Record<Exclude<RowChange, "same">, { mark: string; words: string }> = {
+  better: { mark: "✓", words: " (better with the defenses)" },
+  worse: { mark: "✗", words: " (worse with the defenses)" },
+};
+
+/** The children of the defended cell: its figure, wrapped in the cue when the row changed. */
+function defendedCell(doc: Document, row: CompareRow): (string | Node)[] {
+  if (row.change === "same") return [row.with];
+  const cue = CUES[row.change];
+  return [
+    h(doc, "span", { class: "cue", "aria-hidden": "true" }, cue.mark),
+    row.with,
+    h(doc, "span", { class: "visually-hidden" }, cue.words),
+  ];
+}
+
 function need<T extends HTMLElement>(doc: Document, id: string): T {
   const el = doc.getElementById(id);
   if (!el) throw new Error(`index.html has no element #${id}`);
@@ -210,7 +231,7 @@ export function createComparePanel(doc: Document, deps: CompareDeps): ComparePan
           {},
           h(doc, "th", { scope: "row" }, row.label),
           h(doc, "td", {}, row.without),
-          h(doc, "td", { "data-change": row.change }, row.with),
+          h(doc, "td", { "data-change": row.change }, ...defendedCell(doc, row)),
         ),
       );
     }
