@@ -78,6 +78,23 @@ describe("NOTICE", () => {
     expect(notice).toContain(twgl);
   });
 
+  it("names the bundled display face, its package, file, SHA-256 and licence", () => {
+    expect(notice).toContain("Bundled third-party fonts");
+    expect(notice).toContain("Space Grotesk");
+    expect(notice).toContain("@fontsource-variable/space-grotesk 5.3.0");
+    expect(notice).toContain("space-grotesk-latin-wght-normal.woff2");
+    expect(notice).toContain("0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d");
+    expect(notice).toContain("SIL Open Font License, Version 1.1");
+    expect(notice).toContain("Copyright 2020 The Space Grotesk Project Authors");
+    expect(notice).toContain("public/fonts/OFL.txt");
+  });
+
+  it("ships the font licence text next to the build", () => {
+    const ofl = read("public/fonts/OFL.txt");
+    expect(ofl).toContain("SIL OPEN FONT LICENSE Version 1.1");
+    expect(ofl).not.toContain("\r");
+  });
+
   it("is UTF-8 with LF line endings", () => {
     expect(notice).not.toContain("\r");
     expect(notice.startsWith("Rail Breach\nCopyright 2026 Oliver Dolski\n")).toBe(true);

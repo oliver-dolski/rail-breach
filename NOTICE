@@ -39,3 +39,16 @@ THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+Bundled third-party fonts
+=========================
+
+Space Grotesk (variable, latin subset), package @fontsource-variable/space-grotesk 5.3.0,
+file src/assets/fonts/space-grotesk-latin-wght-normal.woff2,
+SHA-256 0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d,
+served with the production build, licensed under the SIL Open Font License, Version 1.1:
+
+Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
+
+The full licence text ships at public/fonts/OFL.txt (served as /rail-breach/fonts/OFL.txt).

@@ -1,3 +1,4 @@
+import { loadPanelFonts } from "../ui/fonts";
 import type { LoopDeps } from "./loop";
 
 /**
@@ -75,7 +76,9 @@ export function installCaptureHook(manual: ManualFrames): void {
   window.__railBreachCapture = {
     frame: () => manual.frame(),
     frames: () => manual.frames(),
-    ready: document.fonts.ready.then(() => undefined),
+    ready: loadPanelFonts(document.fonts)
+      .then(() => document.fonts.ready)
+      .then(() => undefined),
   };
   document.documentElement.dataset.capture = "";
 }

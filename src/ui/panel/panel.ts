@@ -1,6 +1,7 @@
 import type { AttractSession } from "../../app/session";
 import type { RenderView } from "../../render/view";
 import { setText, syncList } from "../dom";
+import { loadPanelFonts } from "../fonts";
 import { timeToDetect } from "./detect";
 import { readInvariant, renderIndicator, renderRefusal } from "./indicator";
 import { type EventLog, formatClock } from "./log";
@@ -24,6 +25,8 @@ export interface Panel {
 
 /** Drives the DOM panel beside the map. Every write is textContent or an attribute. */
 export function createPanel(doc: Document): Panel {
+  // Boot preload: start fetching the display face now; the page does not wait for it.
+  void loadPanelFonts(doc.fonts);
   const indicator = {
     label: need(doc, "indicator-label"),
     detail: need(doc, "indicator-detail"),

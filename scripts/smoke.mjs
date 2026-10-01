@@ -40,6 +40,7 @@ const PAGE_FACTS = `(() => {
     mapSize: map ? [map.clientWidth, map.clientHeight] : [0, 0],
     fallbackHidden: fallback ? fallback.hidden : null,
     tier: document.documentElement.dataset.renderTier ?? "",
+    displayFace: document.fonts.check('600 20px "Space Grotesk"'),
     csp: window.__csp,
     pageErrors: window.__errors,
     session: sessionStorage.length,
@@ -147,6 +148,16 @@ async function run(target) {
       ["script", "link", "img"].every((k) => kinds.has(k)) &&
       refs.filter((r) => r.kind === "link").length >= 2;
 
+    const fontResponses = net.responses
+      .filter(
+        (r) =>
+          r.status === 200 &&
+          /^https?:/.test(r.url) &&
+          new URL(r.url).origin === origin &&
+          new URL(r.url).pathname.endsWith(".woff2"),
+      )
+      .map((r) => `${r.status} ${r.url}`);
+
     const checks = [
       [
         "1 no failed or 4xx/5xx request",
@@ -205,6 +216,16 @@ async function run(target) {
         "11 render tier reported",
         facts.fallbackHidden === true && ["high", "standard", "lite"].includes(facts.tier),
         [`tier ${facts.tier || "none"}`],
+      ],
+      [
+        "12 display face loaded from the page origin",
+        facts.displayFace === true && fontResponses.length >= 1,
+        [
+          `document.fonts.check ${facts.displayFace}`,
+          ...(fontResponses.length
+            ? fontResponses
+            : ["no .woff2 answered 200 from the page origin"]),
+        ],
       ],
     ];
 

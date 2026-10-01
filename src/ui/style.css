@@ -2,6 +2,16 @@
    Colour variables are set from src/render/palette.ts at start-up, so the panel and
    the map share one palette. */
 
+/* The one display face for panel text. Relative url, so Vite hashes the file and applies the
+   Pages base path; 22 KB is over the inline limit, so it stays a file and the CSP never sees data:. */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("../assets/fonts/space-grotesk-latin-wght-normal.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #07090d;
   --panel-bg: #0b0f15;
@@ -17,7 +27,7 @@
   --detection: #2bc2d6;
   --defense: #a9d13c;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --sans: "Space Grotesk", system-ui, "Segoe UI", sans-serif;
 }
 
 * {
@@ -159,8 +169,8 @@ body {
 
 .panel h1 {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
