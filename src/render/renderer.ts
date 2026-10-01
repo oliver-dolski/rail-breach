@@ -13,6 +13,7 @@ import {
   HDR_EMISSIVE,
   NO_EMISSIVE,
   type Primitives,
+  placement,
 } from "./gl/primitives";
 import {
   bloomSettings,
@@ -22,6 +23,14 @@ import {
   type RenderTier,
   tiersFrom,
 } from "./gl/tier";
+import {
+  FOLD_END_MS,
+  INTRO_MS,
+  type IntroSheet,
+  introPose,
+  introSheet,
+  layerMatrix,
+} from "./intro/pose";
 import { drawMap } from "./layers/map";
 import { drawParticles } from "./layers/particles";
 import { NEUTRAL } from "./palette";
@@ -176,22 +185,11 @@ export class MapRenderer {
     if (this.res?.post) sizePost(this.gl, this.res.post, this.width, this.height);
   }
 
-  draw(view: RenderView, ring: ParticleRing): void {
-    const res = this.res;
-    if (!res || this.gl.isContextLost()) return;
+  /** Binds the scene target (or the canvas without a post chain), clears it and lays the ground. */
+  private beginScene(res: GlResources, frame: Frame, ground: boolean): boolean {
     const { gl } = this;
-    const post = res.post;
-    const targets = post?.targets;
-    if (post && !targets) return;
-
-    const frame: Frame = {
-      view: viewUniform(this.fit, this.width, this.height),
-      pxPerUnit: this.fit.scale,
-      simTime: view.phase / TICKS_PER_SECOND,
-      // Only the float pipeline can show a core brighter than white; an 8-bit target would clip it.
-      emissive: res.tier === "high" ? HDR_EMISSIVE : NO_EMISSIVE,
-    };
-
+    const targets = res.post?.targets;
+    if (res.post && !targets) return false;
     if (targets) {
       twgl.bindFramebufferInfo(gl, targets.scene);
     } else {
@@ -201,8 +199,7 @@ export class MapRenderer {
     const [r, g, b] = NEUTRAL.background;
     gl.clearColor(r, g, b, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-
-    if (view.ground) {
+    if (ground) {
       drawGround(gl, res.prims, frame, {
         width: this.width,
         height: this.height,
@@ -210,6 +207,27 @@ export class MapRenderer {
         sheetHeight: this.layout.height,
       });
     }
+    return true;
+  }
+
+  /** Emissive gain is only meaningful in the float pipeline; an 8-bit target would clip it. */
+  private emissiveFor(res: GlResources): readonly [number, number] {
+    return res.tier === "high" ? HDR_EMISSIVE : NO_EMISSIVE;
+  }
+
+  draw(view: RenderView, ring: ParticleRing): void {
+    const res = this.res;
+    if (!res || this.gl.isContextLost()) return;
+    const { gl } = this;
+    const post = res.post;
+
+    const frame: Frame = {
+      view: viewUniform(this.fit, this.width, this.height),
+      pxPerUnit: this.fit.scale,
+      simTime: view.phase / TICKS_PER_SECOND,
+      emissive: this.emissiveFor(res),
+    };
+    if (!this.beginScene(res, frame, view.ground)) return;
     drawMap(gl, res.prims, view, frame);
     this.drawAmbient(gl, res.prims, frame);
     drawParticles(gl, res.prims, ring, frame);
@@ -221,8 +239,67 @@ export class MapRenderer {
     if (this.reducedMotion || this.ambientCount === 0) return;
     blendAdditive(gl);
     prims.particles.draw(gl, this.ambient, this.ambientCount, {
-      uView: frame.view,
+      ...placement(frame),
       uSimTime: frame.simTime,
     });
+  }
+
+  /**
+   * One frame of the intro: the board drawn through a layer matrix (tilted and pulled apart),
+   * the ambient traffic once the layers have settled, then the same bloom as the live board.
+   * The camera is at home here. The simulation is paused, so the view is the first world.
+   */
+  drawIntro(view: RenderView, elapsedMs: number): void {
+    const res = this.res;
+    if (!res || this.gl.isContextLost()) return;
+    const { gl } = this;
+    const canvas = { width: this.width, height: this.height };
+    const pose = introPose(elapsedMs, this.width / this.height);
+    const emissive = this.emissiveFor(res);
+    const flat: Frame = {
+      view: viewUniform(this.home, this.width, this.height),
+      pxPerUnit: this.home.scale,
+      simTime: view.phase / TICKS_PER_SECOND,
+      emissive,
+    };
+    if (!this.beginScene(res, flat, view.ground)) return;
+
+    const sheet = this.introSheetOf();
+    const layer: Frame = {
+      ...flat,
+      pxPerUnit: this.home.scale * pose.scale,
+      matrix: layerMatrix(pose, 0, this.home, canvas, sheet),
+      alpha: pose.fadeIn,
+    };
+    drawMap(gl, res.prims, view, layer);
+
+    if (pose.ambientAlpha > 0) {
+      // The ambient traffic runs on the show clock less what the intro still has to play, so it
+      // is already moving when it fades in and is exactly in step when the live board takes over.
+      const ambient: Frame = {
+        ...flat,
+        simTime: flat.simTime - (INTRO_MS - elapsedMs) / 1000,
+        matrix: layerMatrix(
+          introPose(FOLD_END_MS, this.width / this.height),
+          0,
+          this.home,
+          canvas,
+          sheet,
+        ),
+        alpha: pose.ambientAlpha,
+      };
+      this.drawAmbient(gl, res.prims, ambient);
+    }
+    if (res.post) runBloom(gl, res.post, bloomSettings(res.tier, this.reducedMotion));
+  }
+
+  private introSheetCache: IntroSheet | undefined;
+
+  private introSheetOf(): IntroSheet {
+    this.introSheetCache ??= introSheet(
+      [{ x: 0, y: 0, w: this.layout.width, h: this.layout.height }],
+      this.layout,
+    );
+    return this.introSheetCache;
   }
 }

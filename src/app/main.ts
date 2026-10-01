@@ -12,6 +12,7 @@ import { CameraTrack } from "../render/camera";
 import { AlertFlashes } from "../render/flashes";
 import { screenToMap } from "../render/geometry";
 import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
+import { INTRO_MS, introPose } from "../render/intro/pose";
 import { ALERT_COLORS, cssColor, DEFENSE_COLORS, SIGNAL_COLORS } from "../render/palette";
 import { ParticleRing, packetParticles } from "../render/particleRing";
 import { MapRenderer } from "../render/renderer";
@@ -40,6 +41,7 @@ import { CAPTURE_FRAME_MS, createManualFrames, installCaptureHook } from "./capt
 import { catalog, entryFor } from "./catalog";
 import { compareSession, defenseCount } from "./compare";
 import { createFollowSwitch } from "./follow";
+import { createIntro, gateTarget, type IntroClock, shouldPlayIntro } from "./intro";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { watchReducedMotion } from "./motion";
@@ -318,6 +320,44 @@ function boot(): void {
   let seenGeneration = session.generation();
   let gate = createRefreshGate();
 
+  // The intro plays once, on the first load, and only where the GPU path is sound. It holds the
+  // simulation still: the loop target below is gated for as long as it runs.
+  const html = document.documentElement;
+  // Only the intro=0 flag is ever read from the address (see shouldPlayIntro); the key never is.
+  const { search } = window.location;
+  const labelsEl = byId("labels");
+  let intro: IntroClock | undefined;
+  /** Puts the page back to normal: labels shown, intro marked done. Safe to call twice. */
+  const finishIntro = (): void => {
+    intro?.end();
+    labelsEl.style.opacity = "";
+    html.setAttribute("data-intro", "done");
+  };
+  const endIntro = (): void => {
+    if (intro?.running()) finishIntro();
+  };
+  if (
+    shouldPlayIntro({
+      reducedMotion,
+      search,
+      tier: renderer?.tier(),
+      fallback: renderer === undefined,
+      stageWidthCss: canvas.clientWidth,
+      firstLoad: true,
+    })
+  ) {
+    intro = createIntro(INTRO_MS);
+    camera.reset();
+    labelsEl.style.opacity = "0";
+    html.setAttribute("data-intro", "running");
+    html.setAttribute("data-intro-played", "");
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") intro?.skip();
+    });
+  } else {
+    html.setAttribute("data-intro", "off");
+  }
+
   /** Starts another scenario from its own recording and clears everything the last one left on screen. */
   const switchTo = (id: string): void =>
     switchScenario(id, {
@@ -356,7 +396,7 @@ function boot(): void {
     switchTo,
   );
   selector.show(session.scenario.id);
-  const target = {
+  const sim = {
     advance(ticks: number): void {
       // One tick at a time: the camera takes one step per simulation tick, whatever the frame length.
       for (let i = 0; i < ticks; i++) {
@@ -393,14 +433,24 @@ function boot(): void {
     },
   };
 
-  const render = (alpha: number, dtMs: number): void => {
+  const target = intro ? gateTarget(sim, intro) : sim;
+
+  const render = (frameAlpha: number, dtMs: number): void => {
     // A GPU that cannot keep up steps down to plain glow, once; the simulation never hears of it.
     if (renderer?.noteFrame(dtMs)) {
       document.documentElement.setAttribute("data-render-tier", renderer.tier());
+      endIntro();
     }
+    if (intro?.running()) {
+      intro.feed(dtMs);
+      if (!intro.running()) finishIntro();
+    }
+    const introOn = intro?.running() === true;
+    // While the intro runs the world is the first one and stands still: no interpolation.
+    const alpha = introOn ? 0 : frameAlpha;
     const world = session.world();
     if (reportingState(world) === "ok") lastGood = world;
-    const prev = session.previous();
+    const prev = introOn ? undefined : session.previous();
     const phase = (prev?.tick ?? world.tick) + alpha;
     const view = buildView(world, viewContext, {
       prev,
@@ -414,7 +464,23 @@ function boot(): void {
       renderer.setCamera(camera.pose(alpha));
       placeLabels(false);
     }
-    renderer?.draw(view, ring);
+    if (intro && introOn && renderer) {
+      const elapsed = intro.elapsedMs();
+      if (intro.phase() === "layers") {
+        try {
+          renderer.drawIntro(view, elapsed);
+        } catch {
+          // Any trouble in the intro path ends it; the board is drawn at once.
+          finishIntro();
+          renderer.draw(view, ring);
+        }
+      } else {
+        labelsEl.style.opacity = String(introPose(elapsed, 1).labelsAlpha);
+        renderer.draw(view, ring);
+      }
+    } else {
+      renderer?.draw(view, ring);
+    }
     if (gate.changed(world.tick, session.status())) {
       labels.mark(world);
       viewToggle.note(view.reporting);

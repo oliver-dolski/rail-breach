@@ -6,7 +6,11 @@ layout(location = 1) in vec4 i_pos;    // x y radius shape
 layout(location = 2) in float i_glow;  // glow radius
 layout(location = 3) in vec4 i_color;
 
-uniform vec4 uView;
+#ifdef MATRIX
+uniform mat4 uMatrix;  // the intro: a map point (x, y, 0) to clip space, tilt and perspective included
+#else
+uniform vec4 uView;  // map -> clip: scale.xy, offset.xy
+#endif
 
 out vec2 v_local;
 out vec4 v_color;
@@ -16,7 +20,11 @@ void main() {
   float r = i_pos.z;
   float pad = r * 1.4 + 2.0 + 2.5 * i_glow;
   vec2 pos = i_pos.xy + a_corner * pad;
+  #ifdef MATRIX
+  gl_Position = uMatrix * vec4(pos, 0.0, 1.0);
+#else
   gl_Position = vec4(pos * uView.xy + uView.zw, 0.0, 1.0);
+#endif
   v_local = a_corner * pad;
   v_color = i_color;
   v_params = vec4(r, i_glow, i_pos.w, 0.0);
@@ -30,6 +38,9 @@ in vec4 v_color;
 in vec4 v_params;
 uniform float uPxPerUnit;
 uniform vec2 uEmissive;  // gain per glow radius unit, gain cap
+#ifdef MATRIX
+uniform float uAlpha;    // the intro fades its layers in; premultiplied output scales whole
+#endif
 out vec4 o_color;
 
 float sdBox(vec2 p, vec2 b) {
@@ -76,5 +87,8 @@ void main() {
   float cov = clamp(core + glow * 0.5, 0.0, 1.0) * v_color.a;
   vec3 rgb = v_color.rgb * (core * gain + glow) * v_color.a;
   o_color = vec4(rgb, cov);
+#ifdef MATRIX
+  o_color *= uAlpha;
+#endif
 }
 #endif

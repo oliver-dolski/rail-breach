@@ -30,6 +30,20 @@ export interface Frame {
    * white for the bloom pass; a tier that draws into an 8-bit target passes NO_EMISSIVE.
    */
   emissive?: readonly [number, number];
+  /**
+   * The intro's layer matrix: a map point (x, y, 0) to clip space. When it is set the primitives
+   * use their MATRIX program and `view` is not read.
+   */
+  matrix?: Float32Array;
+  /** The intro fades a layer in with this; only the MATRIX programs read it. */
+  alpha?: number;
+}
+
+/** The placement uniforms of a frame: the 2D fit, or the intro's matrix with its fade. */
+export function placement(frame: Frame): Record<string, unknown> {
+  return frame.matrix === undefined
+    ? { uView: frame.view }
+    : { uMatrix: frame.matrix, uAlpha: frame.alpha ?? 1 };
 }
 
 /** The emissive gain of the HDR pipeline: one source, shared by lines and discs. */
@@ -77,6 +91,8 @@ export function compileProgram(
 /** One unit quad drawn many times, with per-instance attributes from a single buffer. */
 export class InstancedPass {
   readonly program: twgl.ProgramInfo;
+  /** The same shader placed by a matrix instead of the 2D fit: the intro's layers. */
+  readonly matrixProgram: twgl.ProgramInfo;
   private readonly vao: WebGLVertexArrayObject;
   private readonly quad: WebGLBuffer;
   private readonly instances: WebGLBuffer;
@@ -89,6 +105,12 @@ export class InstancedPass {
     attribs: readonly Attrib[],
   ) {
     this.program = compileProgram(gl, source);
+    try {
+      this.matrixProgram = compileProgram(gl, source, ["MATRIX"]);
+    } catch (error) {
+      gl.deleteProgram(this.program.program);
+      throw error;
+    }
     this.scratch = new Float32Array(floatsPerInstance * 256);
 
     const vao = gl.createVertexArray();
@@ -131,8 +153,9 @@ export class InstancedPass {
     uniforms: Record<string, unknown>,
   ): void {
     if (count === 0) return;
-    gl.useProgram(this.program.program);
-    twgl.setUniforms(this.program, uniforms);
+    const program = uniforms.uMatrix === undefined ? this.program : this.matrixProgram;
+    gl.useProgram(program.program);
+    twgl.setUniforms(program, uniforms);
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
     gl.bufferData(
@@ -149,6 +172,7 @@ export class InstancedPass {
     gl.deleteBuffer(this.quad);
     gl.deleteBuffer(this.instances);
     gl.deleteProgram(this.program.program);
+    gl.deleteProgram(this.matrixProgram.program);
   }
 }
 
@@ -284,7 +308,7 @@ export function drawLineGroups(
     }
   }
   prims.lines.draw(gl, data, total, {
-    uView: frame.view,
+    ...placement(frame),
     uPxPerUnit: frame.pxPerUnit,
     uEmissive: frame.emissive ?? HDR_EMISSIVE,
   });
@@ -311,7 +335,7 @@ export function drawDiscs(
     o += DISC_FLOATS;
   }
   prims.discs.draw(gl, data, instances.length, {
-    uView: frame.view,
+    ...placement(frame),
     uPxPerUnit: frame.pxPerUnit,
     uEmissive: frame.emissive ?? HDR_EMISSIVE,
   });
@@ -348,7 +372,7 @@ export function drawPanels(
     o += PANEL_FLOATS;
   }
   prims.panels.draw(gl, data, panels.length, {
-    uView: frame.view,
+    ...placement(frame),
     uPxPerUnit: frame.pxPerUnit,
     uEmissive: frame.emissive ?? HDR_EMISSIVE,
   });

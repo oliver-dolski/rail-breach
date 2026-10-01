@@ -1,6 +1,8 @@
 // Machine check of a Rail Breach build or a live URL, from a fresh browser profile with no key.
 // Usage: node scripts/smoke.mjs [url]
 // Without a URL it serves dist/ under /rail-breach/ the way GitHub Pages does and tests that.
+// Two passes: the first loads the page with ?intro=0 and runs checks 1 to 14; the second loads
+// the default URL and checks that the intro plays, ends, and the clock then runs (check 15).
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -72,6 +74,86 @@ function networkLog(events) {
   }
   const requested = [...urls.values()].filter((url) => /^https?:/.test(url));
   return { requested, responses, failures };
+}
+
+/** The same URL with the intro switched off, whatever query it already had. */
+function withoutIntro(target) {
+  const url = new URL(target);
+  url.searchParams.set("intro", "0");
+  return url.toString();
+}
+
+/** The default URL: the intro must play, end, and only then may the clock run. */
+async function runIntroPass(target) {
+  const browser = await launchBrowser({ width: 1600, height: 950 });
+  try {
+    for (const domain of ["Network", "Runtime", "Log", "Page"])
+      await browser.send(`${domain}.enable`);
+    await browser.send("Page.bringToFront");
+    await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: RECORDER });
+    await browser.send("Page.navigate", { url: target });
+
+    const probe = `(() => ({
+      played: document.documentElement.hasAttribute("data-intro-played"),
+      state: document.documentElement.getAttribute("data-intro") ?? "",
+      clock: document.getElementById("clock")?.innerText ?? "",
+      csp: window.__csp,
+      pageErrors: window.__errors,
+    }))()`;
+    const started = Date.now();
+    let facts = null;
+    let sawRunning = false;
+    let clockDuringIntro = "";
+    while (Date.now() - started < 20_000) {
+      await sleep(250);
+      try {
+        facts = await browser.evaluate(probe);
+      } catch {
+        continue; // the document is still being replaced
+      }
+      if (facts.state === "running") {
+        sawRunning = true;
+        clockDuringIntro = facts.clock;
+      }
+      if (facts.played && facts.state === "done" && seconds(facts.clock) >= 2) break;
+    }
+    const exceptions = browser.events
+      .filter((e) => e.method === "Runtime.exceptionThrown")
+      .map(
+        (e) => e.params.exceptionDetails.exception?.description ?? e.params.exceptionDetails.text,
+      );
+    const consoleErrors = browser.events
+      .filter((e) => e.method === "Runtime.consoleAPICalled" && e.params.type === "error")
+      .map((e) => e.params.args.map((a) => a.value ?? a.description).join(" "));
+    const securityLogs = browser.events
+      .filter((e) => e.method === "Log.entryAdded" && e.params.entry.source === "security")
+      .map((e) => e.params.entry.text);
+    const quiet = [
+      ...exceptions,
+      ...consoleErrors,
+      ...securityLogs,
+      ...(facts?.csp ?? []),
+      ...(facts?.pageErrors ?? []),
+    ];
+    const ok =
+      facts?.played === true &&
+      facts.state === "done" &&
+      seconds(facts.clock) >= 2 &&
+      sawRunning &&
+      seconds(clockDuringIntro) === 0 &&
+      quiet.length === 0;
+    console.log(`${ok ? "PASS" : "FAIL"} 15 intro plays, ends, and the clock runs`);
+    const detail = [
+      `played ${facts?.played}, state ${facts?.state}, clock ${facts?.clock} after ${Date.now() - started} ms`,
+      `seen running ${sawRunning}, clock while running ${clockDuringIntro || "none"}`,
+      ...quiet,
+    ];
+    if (!ok) for (const line of detail) console.log(`     ${line}`);
+    else console.log(`     ${detail[0]}`);
+    return ok ? 0 : 1;
+  } finally {
+    await browser.close();
+  }
 }
 
 async function run(target) {
@@ -341,9 +423,16 @@ async function run(target) {
   }
 }
 
+/** Both passes against one URL; the exit code is the worse of the two. */
+async function runAll(target) {
+  const first = await run(withoutIntro(target));
+  const second = await runIntroPass(target);
+  return first === 0 && second === 0 ? 0 : 1;
+}
+
 const arg = process.argv[2];
 if (arg) {
-  process.exitCode = await run(arg);
+  process.exitCode = await runAll(arg);
 } else if (!existsSync(join(DIST, "index.html"))) {
   console.error("dist/index.html is missing: run npm run build first");
   process.exitCode = 2;
@@ -351,7 +440,7 @@ if (arg) {
   const server = createPagesServer({ root: DIST, base: BASE });
   try {
     const port = await listen(server);
-    process.exitCode = await run(`http://127.0.0.1:${port}${BASE}`);
+    process.exitCode = await runAll(`http://127.0.0.1:${port}${BASE}`);
   } finally {
     server.close();
     server.closeAllConnections();

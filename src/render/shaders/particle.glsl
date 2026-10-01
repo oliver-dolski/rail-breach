@@ -6,7 +6,12 @@ layout(location = 1) in vec4 i_seg;     // x0 y0 x1 y1
 layout(location = 2) in vec4 i_timing;  // start time (s), duration (s), size, loop flag
 layout(location = 3) in vec4 i_color;
 
+#ifdef MATRIX
+uniform mat4 uMatrix;
+uniform float uAlpha;  // the intro fades its ambient traffic in
+#else
 uniform vec4 uView;
+#endif
 uniform float uSimTime;
 
 out vec2 v_local;
@@ -21,10 +26,18 @@ void main() {
   float pad = size * 3.2;
   vec2 center = mix(i_seg.xy, i_seg.zw, clamp(phase, 0.0, 1.0));
   vec2 pos = center + a_corner * pad * alive;
+  #ifdef MATRIX
+  gl_Position = uMatrix * vec4(pos, 0.0, 1.0);
+#else
   gl_Position = vec4(pos * uView.xy + uView.zw, 0.0, 1.0);
+#endif
   v_local = a_corner * pad;
   float fade = smoothstep(0.0, 0.08, phase) * (1.0 - smoothstep(0.92, 1.0, phase));
+#ifdef MATRIX
+  v_color = vec4(i_color.rgb, i_color.a * alive * fade * uAlpha);
+#else
   v_color = vec4(i_color.rgb, i_color.a * alive * fade);
+#endif
   v_size = size;
 }
 #endif

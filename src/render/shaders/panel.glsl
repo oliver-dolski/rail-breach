@@ -9,7 +9,11 @@ layout(location = 3) in vec4 i_fill;     // rgb, alpha at the top edge
 layout(location = 4) in vec4 i_edge;     // rgb, alpha on the sides and bottom
 layout(location = 5) in vec3 i_more;     // alpha at the bottom edge, alpha on the top edge, inner glow alpha
 
+#ifdef MATRIX
+uniform mat4 uMatrix;  // the intro: a map point (x, y, 0) to clip space, tilt and perspective included
+#else
 uniform vec4 uView;  // map -> clip: scale.xy, offset.xy
+#endif
 
 out vec2 v_local;    // offset from the rectangle's centre, map units
 out vec4 v_box;      // half width, half height, radius, border
@@ -23,7 +27,11 @@ void main() {
   float pad = i_shape.y + 2.0 + 2.5 * i_shape.w;
   vec2 centre = i_rect.xy + half_;
   vec2 local = a_corner * (half_ + pad);
+  #ifdef MATRIX
+  gl_Position = uMatrix * vec4(centre + local, 0.0, 1.0);
+#else
   gl_Position = vec4((centre + local) * uView.xy + uView.zw, 0.0, 1.0);
+#endif
   v_local = local;
   v_box = vec4(half_, i_shape.x, i_shape.y);
   v_glow = vec4(i_shape.z, i_shape.w, i_more.z, i_more.y);
@@ -43,6 +51,9 @@ in vec4 v_edge;
 in float v_bottom;
 uniform float uPxPerUnit;
 uniform vec2 uEmissive;  // gain per glow radius unit, gain cap
+#ifdef MATRIX
+uniform float uAlpha;    // the intro fades its layers in; premultiplied output scales whole
+#endif
 out vec4 o_color;
 
 // Signed distance to a rounded box: negative inside.
@@ -93,5 +104,8 @@ void main() {
            + v_edge.rgb * outerG;
   float cov = clamp(fillA + band * edgeA + innerG + outerG * 0.6, 0.0, 1.0);
   o_color = vec4(rgb, cov);
+#ifdef MATRIX
+  o_color *= uAlpha;
+#endif
 }
 #endif

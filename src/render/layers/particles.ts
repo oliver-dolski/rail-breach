@@ -1,4 +1,4 @@
-import { blendAdditive, type Frame, type Primitives } from "../gl/primitives";
+import { blendAdditive, type Frame, type Primitives, placement } from "../gl/primitives";
 import type { ParticleRing } from "../particleRing";
 
 /**
@@ -14,7 +14,7 @@ export function drawParticles(
 ): void {
   blendAdditive(gl);
   prims.particles.draw(gl, ring.data, ring.count, {
-    uView: frame.view,
+    ...placement(frame),
     uSimTime: frame.simTime,
   });
 }
