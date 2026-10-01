@@ -1,0 +1,107 @@
+<!doctype html>
+<!-- Template for the LinkedIn card (1200x627) and the GitHub social preview (1280x640).
+     scripts/capture.mjs serves it next to a captured still and screenshots it at each size.
+     The size is the window the script opens: the layout is in whole pixels, the right column and
+     the middle row take what is left, and the picture box therefore always has an integer size,
+     which the script reads, crops and scales the still to exactly (so the browser never rescales
+     it). Same series style as the other cards: dark ground, narrow stripe at the left, big sans
+     title, mono lines, pills, repo address at the bottom right. System fonts, no script, no
+     external resource. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rail-breach</title>
+<style>
+  :root {
+    --ground: #0d1117;
+    --stripe: #f5b316;
+    --title: #e6edf3;
+    --muted: #8b949e;
+    --line: #30363d;
+    --link: #58a6ff;
+  }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--ground); overflow: hidden; }
+  .sans { font-family: "Segoe UI", system-ui, sans-serif; }
+  .mono { font-family: "Cascadia Code", Consolas, ui-monospace, monospace; }
+  .card {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 36px 50px 34px 72px;
+    display: grid;
+    grid-template-columns: 528px minmax(0, 1fr);
+    grid-template-rows: 124px minmax(0, 1fr) 40px;
+    column-gap: 30px;
+    background: var(--ground);
+  }
+  .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 11px; background: var(--stripe); }
+  h1 {
+    grid-column: 1 / 3;
+    grid-row: 1;
+    margin: 0;
+    height: 124px;
+    font-size: 124px;
+    line-height: 124px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    color: var(--title);
+  }
+  .lines { grid-column: 1; grid-row: 2; align-self: start; margin-top: 26px; }
+  .lines p { margin: 0 0 10px; font-size: 22px; line-height: 28px; color: var(--muted); }
+  .lines p b { color: var(--title); font-weight: 700; }
+  .shot {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 26px 0 22px;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: #07090d;
+  }
+  .shot img { display: block; width: 100%; height: 100%; }
+  .pills { grid-column: 1; grid-row: 3; display: flex; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .pills li {
+    box-sizing: border-box;
+    height: 40px;
+    border: 2px solid var(--line);
+    border-radius: 8px;
+    padding: 0 14px;
+    font-size: 17px;
+    line-height: 36px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .repo {
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: end;
+    margin: 0;
+    height: 40px;
+    font-size: 24px;
+    line-height: 40px;
+    font-weight: 700;
+    color: var(--link);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="stripe"></div>
+  <h1 class="sans">rail-breach</h1>
+  <section class="lines mono">
+    <p>A live <b>ATT&amp;CK for ICS</b> attack on a fictional railway.</p>
+    <p>Signals fall to stop, trains stand, the interlocking fails safe.</p>
+    <p>Deterministic, keyless, in the browser.</p>
+  </section>
+  <figure class="shot"><img id="still" src="still-attack.png" alt="The rail-breach dispatcher map at 00:20: the chain has landed, every signal is at stop, an IDS alert has fired."></figure>
+  <ul class="pills mono">
+    <li>ATT&amp;CK for ICS v19.2</li>
+    <li>WebGL2</li>
+    <li>Apache-2.0</li>
+  </ul>
+  <p class="repo mono">github.com/oliver-dolski/rail-breach</p>
+</main>
+</body>
+</html>

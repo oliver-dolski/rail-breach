@@ -1,12 +1,14 @@
 // Publication media, made deterministically from the recorded phishing session.
 //
-// Usage: node scripts/capture.mjs [--frames N] [--verify-determinism] [--reuse-frames]
+// Usage: node scripts/capture.mjs [--frames N] [--verify-determinism] [--reuse-frames] [--cards-only]
 //        (npm run media:capture)
 //
-// A plain run makes the whole set: the 1080p video, the README teaser GIF and the two stills.
+// A plain run makes the whole set: the 1080p video, the README teaser GIF, the two stills, the
+// LinkedIn card and the GitHub social preview (the card template is scripts/capture/card.html).
 // --frames N captures only N frames and makes just a clip (a quick check of the pipeline).
 // --reuse-frames skips the capture and encodes again from scratch/capture/frames, which is how
-// the GIF settings below were tuned without playing the session each time.
+// the GIF settings below were tuned without playing the session each time. --cards-only draws just
+// the two cards from the stills already in scratch/capture, for working on the template.
 //
 // The page is built in capture mode, where the script and not the wall clock advances each frame
 // by exactly 40 ms of simulated time. The same recording and the same frame clock give the same
@@ -83,6 +85,22 @@ const STILLS = [
   { name: "still-attack.png", clock: "00:20" },
   { name: "still-halt.png", clock: "00:34" },
 ];
+/** The still the cards show as their picture: the chain has landed and every signal is at stop. */
+const CARD_STILL = "still-attack.png";
+/**
+ * Time a card page is left alone after it has loaded before it is photographed. A session that
+ * is shot sooner sometimes keeps a coarser downscale of the still for good (both states are
+ * stable, so comparing two shots does not catch it); after this long every session agrees.
+ */
+const CARD_SETTLE_MS = 500;
+/** The cards: the template is rendered in a window of exactly this size, at a pixel ratio of 1. */
+const CARDS = [
+  { file: "featured-1200x627.png", width: 1200, height: 627 },
+  // GitHub takes a social preview under 1 MB; a PNG over that is written as a JPEG instead.
+  { file: "github-social-preview-1280x640.png", width: 1280, height: 640, maxBytes: 1024 * 1024 },
+];
+/** JPEG quality of the social preview when the PNG is over its limit. */
+const PREVIEW_JPEG_QUALITY = 92;
 /** LinkedIn video limits, checked 2026-10-01 (plan 03-04): 3 s to 15 min, 75 KB to 5 GB. */
 const VIDEO_LIMITS = {
   minSeconds: 3,
@@ -96,7 +114,7 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const pad = (n) => String(n).padStart(6, "0");
 
 function parseArgs(argv) {
-  const options = { frames: undefined, verify: false, reuse: false };
+  const options = { frames: undefined, verify: false, reuse: false, cardsOnly: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--frames") {
       options.frames = Number(argv[++i]);
@@ -107,6 +125,8 @@ function parseArgs(argv) {
       options.verify = true;
     } else if (argv[i] === "--reuse-frames") {
       options.reuse = true;
+    } else if (argv[i] === "--cards-only") {
+      options.cardsOnly = true;
     } else {
       throw new Error(`unknown argument ${argv[i]}`);
     }
@@ -383,6 +403,126 @@ async function checkGif(file) {
   return failures;
 }
 
+/** A screenshot of a card page that has been left alone for CARD_SETTLE_MS and is not changing: two shots 300 ms apart agree. */
+async function settledScreenshot(browser) {
+  await sleep(CARD_SETTLE_MS);
+  let previous = await browser.screenshot({ fromSurface: true });
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await sleep(300);
+    const next = await browser.screenshot({ fromSurface: true });
+    if (next.equals(previous)) return next;
+    previous = next;
+  }
+  throw new Error("the card never stopped changing");
+}
+
+/** Width of the side panel in CSS pixels (.app in style.css); the map is the rest of the page. */
+const PANEL_CSS_WIDTH = 340;
+/** Rows of the still, from the top, that hold the map: everything drawn on it ends above this row. */
+const CARD_MAP_ROWS = 940;
+/** The ground colour of the map, for the bars when the box has another aspect than the map. */
+const CARD_PAD_COLOR = "0x07090d";
+
+/**
+ * The map part of the card still (without the side panel), scaled to fit the picture box and
+ * padded to its exact size, so the browser shows the file 1:1.
+ */
+async function cropToBox(file, box) {
+  const mapWidth = Math.round((VIEWPORT.width - PANEL_CSS_WIDTH) * DPR);
+  await ffmpeg([
+    "-i",
+    join(WORK, CARD_STILL),
+    "-vf",
+    `crop=${mapWidth}:${CARD_MAP_ROWS}:0:0,scale=${box.w}:${box.h}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${box.w}:${box.h}:(ow-iw)/2:(oh-ih)/2:color=${CARD_PAD_COLOR}`,
+    "-frames:v",
+    "1",
+    file,
+  ]);
+}
+
+/**
+ * Renders the card template once per size, around the captured still, and returns the files
+ * written. The page is served from a temporary folder with createPagesServer (base "/"), nothing
+ * leaves that origin, and each size is a window of exactly that size, so the screenshot is the card.
+ */
+async function renderCards() {
+  const site = join(WORK, "card-site");
+  await rm(site, { recursive: true, force: true });
+  await mkdir(site, { recursive: true });
+  await copyFile(join(ROOT, "scripts", "capture", "card.html"), join(site, "card.html"));
+  await copyFile(join(WORK, CARD_STILL), join(site, CARD_STILL));
+
+  const server = createPagesServer({ root: site, base: "/" });
+  const port = await listen(server);
+  const origin = `http://127.0.0.1:${port}`;
+  const browser = await launchBrowser({ width: 1400, height: 800 });
+  const written = [];
+  try {
+    for (const domain of ["Network", "Runtime", "Page"]) await browser.send(`${domain}.enable`);
+    await browser.send("Page.bringToFront");
+    for (const card of CARDS) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width: card.width,
+        height: card.height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await browser.send("Page.navigate", { url: `${origin}/card.html` });
+      for (let waited = 0; ; waited += 100) {
+        if (waited > 15_000) throw new Error("the card page never finished loading");
+        try {
+          const ready = await browser.evaluate(
+            `document.readyState === "complete" && document.getElementById("still").complete && innerWidth === ${card.width} && innerHeight === ${card.height}`,
+          );
+          if (ready) break;
+        } catch {
+          // the document is still being replaced
+        }
+        await sleep(100);
+      }
+      // The picture box has an integer size (the template is in whole pixels). Crop the still to the
+      // map and scale it to exactly that size here, with ffmpeg, so the browser draws it 1:1 and
+      // never rescales it: its own downscale came out one of several ways from session to session.
+      const box = await browser.evaluate(
+        `(() => { const b = document.querySelector(".shot"); return { w: b.clientWidth, h: b.clientHeight }; })()`,
+      );
+      const shot = `shot-${card.width}x${card.height}.png`;
+      await cropToBox(join(site, shot), box);
+      await browser.evaluate(
+        `(() => { const img = document.getElementById("still"); img.src = ${JSON.stringify(shot)}; return img.decode(); })()`,
+      );
+      await browser.evaluate("document.fonts.ready");
+      await browser.evaluate(
+        "new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))",
+      );
+      let file = join(LINKEDIN, card.file);
+      let png = await settledScreenshot(browser);
+      if (card.maxBytes !== undefined && png.length >= card.maxBytes) {
+        console.log(`${card.file} is ${kib(png.length)}, over its limit: writing a JPEG instead`);
+        png = await browser.screenshot({
+          fromSurface: true,
+          format: "jpeg",
+          quality: PREVIEW_JPEG_QUALITY,
+        });
+        file = file.replace(/\.png$/, ".jpg");
+      }
+      await writeFile(file, png);
+      written.push({ file, width: card.width, height: card.height, maxBytes: card.maxBytes });
+    }
+    const foreign = new Set();
+    for (const { method, params } of browser.events) {
+      if (method === "Network.requestWillBeSent" && /^https?:/.test(params.request.url)) {
+        if (new URL(params.request.url).origin !== origin) foreign.add(params.request.url);
+      }
+    }
+    if (foreign.size > 0) throw new Error(`a card requested ${[...foreign].join(", ")}`);
+  } finally {
+    await browser.close();
+    server.close();
+  }
+  return written;
+}
+
 /** The first frame whose clock reads the given text. */
 function frameAt(frames, clock) {
   const found = frames.find((frame) => frame.clock === clock);
@@ -394,6 +534,13 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const count = options.frames ?? CAPTURE_SECONDS * FPS + 1;
   const full = options.frames === undefined;
+
+  if (options.cardsOnly) {
+    await mkdir(LINKEDIN, { recursive: true });
+    const failures = await report(await renderCards());
+    if (failures.length > 0) throw new Error(failures.join("\n"));
+    return;
+  }
 
   let frames;
   if (options.reuse) {
@@ -440,7 +587,22 @@ async function main() {
   for (const { name, clock } of STILLS) {
     const target = join(WORK, name);
     await copyFile(join(FRAMES_DIR, `${pad(frameAt(frames, clock).i)}.png`), target);
-    outputs.push({ file: target, width: 1920, height: 1080 });
+    // The stills are also handed over in the post folder, next to the video and the cards.
+    await copyFile(target, join(LINKEDIN, name));
+    outputs.push({ file: join(LINKEDIN, name), width: 1920, height: 1080 });
+  }
+  for (const card of await renderCards()) {
+    outputs.push({
+      file: card.file,
+      width: card.width,
+      height: card.height,
+      check: async () => {
+        const size = (await readFile(card.file)).length;
+        return card.maxBytes !== undefined && size >= card.maxBytes
+          ? [`${relative(ROOT, card.file)} is ${size} bytes, over ${card.maxBytes}`]
+          : [];
+      },
+    });
   }
   const failures = await report(outputs);
   if (failures.length > 0) throw new Error(`budget failed:\n${failures.join("\n")}`);
