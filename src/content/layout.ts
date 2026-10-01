@@ -41,8 +41,14 @@ export interface Layout {
   /** Extra track drawn between blocks that the block polylines do not cover. */
   connectors: Pt[][];
   stations: StationPlacement[];
-  /** Short on-map caption of each conduit, placed where its links run. */
+  /** Short on-map caption of each conduit. */
   conduits: Record<string, string>;
+  /**
+   * Where each conduit's caption sits: on one of the conduit's own links, at this fraction of
+   * its length from end a. A conduit without an entry gets the middle of its first link.
+   * The spots are chosen so no caption touches another label or a zone border (a test checks).
+   */
+  conduitSpots: Record<string, { link: string; at: number }>;
 }
 
 const pts = (...xy: number[]): Pt[] => {
@@ -59,6 +65,8 @@ const BR_Y = 830;
 
 const X = { HAR: 110, TAV: 455, VEL: 795, CRE: 1135, DUN: 1490 } as const;
 const HALF = 50;
+/** Half the width of an interlocking zone: wide enough for its own caption at the smallest map scale. */
+const IL_HALF = 85;
 
 const dn = (x0: number, x1: number): Pt[] => pts(x0, DN_Y, x1, DN_Y);
 const up = (x0: number, x1: number): Pt[] => pts(x0, UP_Y, x1, UP_Y);
@@ -71,36 +79,36 @@ export const layout: Layout = {
   height: 900,
   zones: [
     { id: "z-internet", label: "INTERNET", x: 20, y: 40, w: 130, h: 180 },
-    { id: "z-corp", label: "CORPORATE IT", x: 190, y: 40, w: 290, h: 250 },
+    { id: "z-corp", label: "CORPORATE IT", x: 260, y: 40, w: 290, h: 250 },
     { id: "z-vendor", label: "VENDOR ACCESS", x: 20, y: 330, w: 330, h: 150 },
-    { id: "z-dmz", label: "DMZ", x: 520, y: 90, w: 130, h: 180 },
-    { id: "z-ctrl", label: "CONTROL CENTRE", x: 700, y: 40, w: 360, h: 320 },
-    { id: "z-il-tav", label: "IL TAVERSHALL", x: X.TAV - 75, y: 380, w: 150, h: 130 },
-    { id: "z-il-vel", label: "IL VELMOOR JN", x: X.VEL - 75, y: 380, w: 150, h: 130 },
-    { id: "z-il-cre", label: "IL CRENMOOR", x: X.CRE - 75, y: 380, w: 150, h: 130 },
-    { id: "z-way", label: "TRACKSIDE", x: 20, y: 525, w: 1560, h: 350 },
+    { id: "z-dmz", label: "DMZ", x: 660, y: 90, w: 130, h: 180 },
+    { id: "z-ctrl", label: "CONTROL CENTRE", x: 900, y: 40, w: 360, h: 282 },
+    { id: "z-il-tav", label: "IL TAVERSHALL", x: X.TAV - IL_HALF, y: 380, w: 2 * IL_HALF, h: 130 },
+    { id: "z-il-vel", label: "IL VELMOOR JN", x: X.VEL - IL_HALF, y: 380, w: 2 * IL_HALF, h: 130 },
+    { id: "z-il-cre", label: "IL CRENMOOR", x: X.CRE - IL_HALF, y: 380, w: 2 * IL_HALF, h: 130 },
+    { id: "z-way", label: "TRACKSIDE", x: 20, y: 525, w: 1560, h: 360 },
   ],
   nodes: {
     internet: { x: 85, y: 130, label: "Internet" },
-    "corp-mail": { x: 250, y: 105, label: "Mail gateway" },
-    "corp-ws-dispatch": { x: 420, y: 105, label: "Dispatcher WS" },
-    "corp-dc": { x: 250, y: 225, label: "Directory" },
-    "corp-ws-office": { x: 420, y: 225, label: "Office WS" },
+    "corp-mail": { x: 330, y: 105, label: "Mail gateway" },
+    "corp-ws-dispatch": { x: 470, y: 105, label: "Dispatcher WS" },
+    "corp-dc": { x: 330, y: 225, label: "Directory" },
+    "corp-ws-office": { x: 470, y: 225, label: "Office WS" },
     "vpn-gw": { x: 80, y: 405, label: "Vendor VPN" },
     "vendor-jump": { x: 270, y: 405, label: "Jump host" },
-    "dmz-relay": { x: 585, y: 180, label: "DMZ relay" },
-    "dispatch-hmi-1": { x: 780, y: 95, label: "Console 1" },
-    "dispatch-hmi-2": { x: 990, y: 95, label: "Console 2" },
-    "tms-server": { x: 930, y: 190, label: "Traffic mgmt" },
-    "ctrl-eng-ws": { x: 760, y: 190, label: "Engineering WS" },
-    historian: { x: 760, y: 295, label: "Historian" },
-    fep: { x: 930, y: 295, label: "Front-end proc." },
+    "dmz-relay": { x: 725, y: 180, label: "DMZ relay" },
+    "dispatch-hmi-1": { x: 980, y: 95, label: "Console 1" },
+    "dispatch-hmi-2": { x: 1190, y: 95, label: "Console 2" },
+    "tms-server": { x: 1130, y: 185, label: "Traffic mgmt" },
+    "ctrl-eng-ws": { x: 990, y: 185, label: "Engineering WS" },
+    historian: { x: 970, y: 270, label: "Historian" },
+    fep: { x: 1130, y: 270, label: "Front-end proc." },
     "il-tav": { x: X.TAV - 30, y: 430, label: "IL-TAV" },
-    "mws-tav": { x: X.TAV + 35, y: 472, label: "Maint. WS" },
+    "mws-tav": { x: X.TAV + 25, y: 472, label: "Maint. WS" },
     "il-vel": { x: X.VEL - 30, y: 430, label: "IL-VEL" },
-    "mws-vel": { x: X.VEL + 35, y: 472, label: "Maint. WS" },
+    "mws-vel": { x: X.VEL + 25, y: 472, label: "Maint. WS" },
     "il-cre": { x: X.CRE - 30, y: 430, label: "IL-CRE" },
-    "mws-cre": { x: X.CRE + 35, y: 472, label: "Maint. WS" },
+    "mws-cre": { x: X.CRE + 25, y: 472, label: "Maint. WS" },
     "oc-tav": { x: X.TAV, y: 570, label: "OC-TAV" },
     "oc-vel": { x: X.VEL, y: 570, label: "OC-VEL" },
     "oc-cre": { x: X.CRE, y: 570, label: "OC-CRE" },
@@ -133,10 +141,11 @@ export const layout: Layout = {
   stations: [
     { name: "Harkwell", x: X.HAR, y: DN_Y + 34 },
     { name: "Tavershall", x: X.TAV, y: DN_Y + 34 },
-    { name: "Velmoor Junction", x: X.VEL, y: DN_Y + 34 },
+    // Left of the station: centred on it, the name would touch the branch line that leaves to the right.
+    { name: "Velmoor Junction", x: X.VEL - 45, y: DN_Y + 34 },
     { name: "Crenmoor", x: X.CRE, y: DN_Y + 34 },
     { name: "Dunmarrow", x: X.DUN, y: DN_Y + 34 },
-    { name: "Pellthorne", x: 1310, y: BR_Y + 32 },
+    { name: "Pellthorne", x: 1310, y: BR_Y + 26 },
   ],
   conduits: {
     "c-net-corp": "Net-Corp",
@@ -150,5 +159,11 @@ export const layout: Layout = {
     "c-tav-way": "TAV-Way",
     "c-vel-way": "VEL-Way",
     "c-cre-way": "CRE-Way",
+  },
+  conduitSpots: {
+    // Between the trackside border and the object controller, clear of the interlocking zone above.
+    "c-tav-way": { link: "l-il-oc-tav", at: 0.8 },
+    "c-vel-way": { link: "l-il-oc-vel", at: 0.8 },
+    "c-cre-way": { link: "l-il-oc-cre", at: 0.8 },
   },
 };

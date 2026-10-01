@@ -1,5 +1,6 @@
 import type { Layout } from "../content/layout";
 import type { World } from "../core/sim/world";
+import { ZONE_LABEL_DX, ZONE_LABEL_DY } from "../render/labelgeometry";
 import type { NodeVisualState } from "../render/palette";
 import type { Geometry } from "../render/renderer";
 import { CONDUIT_LABEL_DY, NODE_LABEL_DY, nodeVisualState } from "../render/view";
@@ -42,7 +43,8 @@ export function createLabels(
     return el;
   };
 
-  for (const z of layout.zones) add("lbl lbl-zone", z.label, z.x + 8, z.y + 6);
+  for (const z of layout.zones)
+    add("lbl lbl-zone", z.label, z.x + ZONE_LABEL_DX, z.y + ZONE_LABEL_DY);
   for (const [id, n] of Object.entries(layout.nodes)) {
     nodeEls.set(id, add("lbl lbl-node", n.label, n.x, n.y, NODE_LABEL_DY));
   }

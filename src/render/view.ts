@@ -132,8 +132,9 @@ export interface ViewContext {
   links: { id: string; a: Pt; b: Pt; conduit: string }[];
   linkById: Map<string, { a: Pt; b: Pt }>;
   /**
-   * Where each conduit's caption goes: the middle of its first link in content order, so
-   * the caption always sits on a line the conduit really has. `link` is that link's id.
+   * Where each conduit's caption goes: on one of its own links, at the spot the layout names
+   * (the middle of the first link in content order when it names none), so the caption always
+   * sits on a line the conduit really has. `link` is that link's id.
    */
   conduitMarks: { id: string; label: string; x: number; y: number; link: string }[];
   /** Every text box on the map a defense glyph must keep off: node labels and conduit captions. */
@@ -186,13 +187,18 @@ export function createViewContext(content: Content, index: Index, layout: Layout
 
   const conduitMarks: ViewContext["conduitMarks"] = [];
   for (const conduit of content.conduits) {
-    const first = links.find((l) => l.conduit === conduit.id);
+    const spot = layout.conduitSpots[conduit.id];
+    const first =
+      (spot && links.find((l) => l.id === spot.link && l.conduit === conduit.id)) ||
+      links.find((l) => l.conduit === conduit.id);
     if (first === undefined) continue;
+    // Along the link at the layout's fraction, or in the middle when the layout names no spot.
+    const at = spot !== undefined && first.id === spot.link ? spot.at : 0.5;
     conduitMarks.push({
       id: conduit.id,
       label: layout.conduits[conduit.id] ?? conduit.name,
-      x: (first.a.x + first.b.x) / 2,
-      y: (first.a.y + first.b.y) / 2,
+      x: first.a.x + (first.b.x - first.a.x) * at,
+      y: first.a.y + (first.b.y - first.a.y) * at,
       link: first.id,
     });
   }
