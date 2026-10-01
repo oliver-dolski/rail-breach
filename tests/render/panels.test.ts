@@ -162,6 +162,7 @@ describe("draw-call budget", () => {
     const view = {
       ...base,
       alerts: [aLine],
+      trail: [aLine],
       defenseArrows: [aLine],
       defenses: [aDisc],
       halos: [aDisc],
@@ -169,6 +170,7 @@ describe("draw-call budget", () => {
     for (const list of [
       view.panels,
       view.links,
+      view.trail,
       view.track,
       view.routes,
       view.alerts,

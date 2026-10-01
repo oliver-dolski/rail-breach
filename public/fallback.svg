@@ -59,6 +59,12 @@
 <line x1="425" y1="430" x2="455" y2="570" stroke="rgb(73 76 80)" stroke-width="2"/>
 <line x1="765" y1="430" x2="795" y2="570" stroke="rgb(73 76 80)" stroke-width="2"/>
 <line x1="1105" y1="430" x2="1135" y2="570" stroke="rgb(73 76 80)" stroke-width="2"/>
+<g class="trail">
+<line x1="85" y1="130" x2="330" y2="105" stroke="rgb(247 69 194)" stroke-width="2.6" opacity="0.55" stroke-linecap="round"/>
+<line x1="330" y1="105" x2="470" y2="105" stroke="rgb(247 69 194)" stroke-width="2.6" opacity="0.55" stroke-linecap="round"/>
+<line x1="470" y1="105" x2="725" y2="180" stroke="rgb(247 69 194)" stroke-width="2.6" opacity="0.55" stroke-linecap="round"/>
+<line x1="725" y1="180" x2="980" y2="95" stroke="rgb(247 69 194)" stroke-width="2.6" opacity="0.55" stroke-linecap="round"/>
+</g>
 <polyline points="60,710 160,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>
 <polyline points="160,710 405,710" fill="none" stroke="rgb(102 106 112)" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
 <polyline points="405,710 505,710" fill="none" stroke="rgb(102 106 112)" stroke-width="9" stroke-linecap="butt" stroke-linejoin="round"/>

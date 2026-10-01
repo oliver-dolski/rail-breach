@@ -2,6 +2,7 @@ import type { Layout, Pt } from "../content/layout";
 import type { Content } from "../content/types";
 import { pointAt, polyline } from "./geometry";
 import { ALERT_COLORS, cssColor, NEUTRAL, type Rgb, SIGNAL_COLORS } from "./palette";
+import { TRAIL_AFTERGLOW } from "./trail";
 import { ZONE_PANEL } from "./view";
 
 /**
@@ -21,6 +22,13 @@ const path = (pts: readonly Pt[]): string => pts.map((p) => `${num(p.x)},${num(p
 const STILL = {
   compromised: ["corp-ws-dispatch", "dmz-relay", "dispatch-hmi-1"],
   lost: ["tms-server"],
+  /** The hops the intruder has travelled by the frozen moment: Internet to Console 1. */
+  trail: [
+    ["internet", "corp-mail"],
+    ["corp-mail", "corp-ws-dispatch"],
+    ["corp-ws-dispatch", "dmz-relay"],
+    ["dmz-relay", "dispatch-hmi-1"],
+  ],
   proceedSignals: ["S-HAR-dn", "S-DUN-up", "S-L4-dn"],
   trains: [
     { block: "L2_dn", at: 0.55 },
@@ -124,6 +132,18 @@ export function buildFallbackSvg(layout: Layout, content: Content): string {
       `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${cssColor(NEUTRAL.link)}" stroke-width="${link.conduit ? 2 : 1.4}"/>`,
     );
   }
+
+  // The kill chain stays lit in the attacker hue: the afterglow of the live trail, drawn over the links.
+  const hops: string[] = [];
+  for (const [from, to] of STILL.trail) {
+    const a = layout.nodes[from];
+    const b = layout.nodes[to];
+    if (!a || !b) continue;
+    hops.push(
+      `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${cssColor(ALERT_COLORS.attacker)}" stroke-width="${TRAIL_AFTERGLOW.width}" opacity="${TRAIL_AFTERGLOW.alpha}" stroke-linecap="round"/>`,
+    );
+  }
+  if (hops.length > 0) add(`<g class="trail">\n${hops.join("\n")}\n</g>`);
 
   const seen = new Set<string>();
   for (const block of content.tracks.blocks) {

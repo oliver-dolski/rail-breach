@@ -4,6 +4,7 @@ import { layout } from "../../src/content/layout";
 import { network } from "../../src/content/network";
 import { buildFallbackSvg, stillTrains } from "../../src/render/fallbackSvg";
 import { detectWebgl2 } from "../../src/render/gl/context";
+import { ALERT_COLORS, cssColor, NEUTRAL } from "../../src/render/palette";
 import { FALLBACK_MESSAGE, showFallback } from "../../src/ui/fallback";
 
 describe("detectWebgl2", () => {
@@ -112,6 +113,34 @@ describe("the static still", () => {
     expect(committed).toContain('stop-opacity="0.035"');
     // The top edge is lit more brightly than the sides.
     expect(committed.match(/stroke-opacity="0.85"/g)?.length).toBe(layout.zones.length);
+  });
+
+  it("draws the kill chain as a trail of four hops after the links, in the attacker colour", () => {
+    const at = committed.indexOf('<g class="trail">');
+    expect(at).toBeGreaterThan(committed.lastIndexOf(`stroke="${cssColor(NEUTRAL.link)}"`));
+    const group = committed.slice(at, committed.indexOf("</g>", at));
+    const lines = group.split("\n").filter((l) => l.startsWith("<line "));
+    expect(lines).toHaveLength(4);
+    const ends = lines.map((l) => {
+      const n = (name: string): number => Number(new RegExp(` ${name}="([^"]+)"`).exec(l)?.[1]);
+      return [n("x1"), n("y1"), n("x2"), n("y2")];
+    });
+    const expected = ["l-net-mail", "l-mail-dispatch", "l-dispatch-dmz", "l-dmz-hmi1"].map((id) => {
+      const link = network.links.find((k) => k.id === id);
+      const a = layout.nodes[link?.a ?? ""];
+      const b = layout.nodes[link?.b ?? ""];
+      return [a?.x, a?.y, b?.x, b?.y];
+    });
+    expect(ends).toEqual(expected);
+    for (const l of lines) {
+      expect(l).toContain(`stroke="${cssColor(ALERT_COLORS.attacker)}"`);
+      expect(l).toContain('stroke-width="2.6"');
+      expect(l).toContain('opacity="0.55"');
+      expect(l).toContain('stroke-linecap="round"');
+    }
+    // Under the track and the machines.
+    expect(at).toBeLessThan(committed.indexOf("<polyline"));
+    expect(committed.match(/class="trail"/g)).toHaveLength(1);
   });
 
   it("shows the railway and the machines, not an empty frame", () => {

@@ -117,6 +117,8 @@ export interface RenderView {
   /** Whether the dot grid is drawn under the panels. */
   ground: boolean;
   links: LineInstance[];
+  /** The links the attack chain travelled, lit in the attacker hue (see trail.ts). Empty without a trail. */
+  trail: readonly LineInstance[];
   track: LineInstance[];
   routes: LineInstance[];
   trains: LineInstance[];
@@ -153,6 +155,8 @@ export interface ViewOptions {
   lastGood?: World;
   /** How brightly each link an IDS alert lit up is lit right now (see flashes.ts). */
   alerts?: readonly AlertLevel[];
+  /** The lit path of the attack at this phase (see trail.ts); passed through to the view as it is. */
+  trail?: readonly LineInstance[];
 }
 
 interface DrawBlock {
@@ -886,6 +890,7 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
     panels: zonePanels(world, ctx),
     ground: true,
     links,
+    trail: opts.trail ?? [],
     track,
     routes,
     trains,

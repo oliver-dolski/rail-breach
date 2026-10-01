@@ -3,6 +3,7 @@ import { layout } from "../content/layout";
 import { network } from "../content/network";
 import { techniques } from "../content/techniques";
 import type { Action } from "../core/sim/actions";
+import { TICKS_PER_SECOND } from "../core/sim/constants";
 import type { World } from "../core/sim/world";
 import { buildMapperContext } from "../mapper/context";
 import { keywordMapper } from "../mapper/keyword";
@@ -13,6 +14,7 @@ import { detectWebgl2, fitCanvas, watchContext } from "../render/gl/context";
 import { ALERT_COLORS, cssColor, DEFENSE_COLORS, SIGNAL_COLORS } from "../render/palette";
 import { ParticleRing, packetParticles } from "../render/particleRing";
 import { MapRenderer } from "../render/renderer";
+import { AttackTrail } from "../render/trail";
 import { buildView, createViewContext, nearestConduit, reportingState } from "../render/view";
 import { setText } from "../ui/dom";
 import {
@@ -121,6 +123,7 @@ function boot(): void {
   });
   const ring = new ParticleRing();
   const flashes = new AlertFlashes();
+  const trail = new AttackTrail(layout);
   const viewToggle = createViewToggle(document);
   /** The last world whose operator feed was good: what a frozen console keeps showing. */
   let lastGood: World | undefined;
@@ -268,6 +271,7 @@ function boot(): void {
         log.reset();
         ring.clear();
         flashes.clear();
+        trail.clear();
         timeline.reset();
         compare.reset();
         lastGood = undefined;
@@ -294,6 +298,7 @@ function boot(): void {
         log.reset();
         ring.clear();
         flashes.clear();
+        trail.clear();
         timeline.reset();
         compare.reset();
         lastGood = undefined;
@@ -302,6 +307,7 @@ function boot(): void {
       log.ingest(events, session.scenario.startTick);
       timeline.ingest(events, session.scenario.startTick);
       flashes.ingest(events);
+      trail.ingest(events);
       for (const event of events) {
         if (event.k === "packet") for (const p of packetParticles(event, layout)) ring.push(p);
       }
@@ -323,6 +329,7 @@ function boot(): void {
       mode: viewToggle.mode(),
       lastGood,
       alerts: flashes.levels(phase, reducedMotion),
+      trail: trail.lines(phase / TICKS_PER_SECOND, reducedMotion),
     });
     renderer?.draw(view, ring);
     if (gate.changed(world.tick, session.status())) {
