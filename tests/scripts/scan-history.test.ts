@@ -466,7 +466,7 @@ describe("scan-history: binary blobs, size and identities", () => {
       {
         "img/key.png": meta(`k=${provider}`),
         "img/ip.png": meta(`h=${dots("10", "4", "4", "4")}`),
-        "img/who.png": meta(words("made", "by", "an", "LLM")),
+        "img/who.png": meta(words("written", "by", "an", "LLM")),
         "img/home.png": meta(`/${["home", "jdoe", "x"].join("/")}/`),
         "img/clean.png": meta("nothing here"),
       },

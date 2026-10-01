@@ -23,6 +23,49 @@ const EN_DASH = String.fromCharCode(0x2013);
 const LONG_DASH = new RegExp(`[${EN_DASH}${EM_DASH}]`, "g");
 
 const FIELD = "\x1f";
+const MAX_BLOB_BYTES = 5 * 1024 * 1024;
+const MEDIA = /\.(?:png|gif|jpe?g|mp4|webm)$/i;
+
+// Shape rules. Each pattern is written so that this file's own text does not match it: a character
+// class or a group follows every prefix, never the bare literal. Run the scan on the repository
+// after changing one.
+const KEY_PATTERNS = [
+  // sk-test- is the placeholder the key-handling tests use; no provider issues keys that start so.
+  /(?<![A-Za-z0-9])sk-(?!test-)[A-Za-z0-9_-]{20,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{36,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{22,}/g,
+  /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
+  /\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
+  /\bAIza[0-9A-Za-z_-]{35}/g,
+  /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY(?: BLOCK)?-----/g,
+];
+
+const OCTET = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
+const IPV4 = new RegExp(
+  `(?<![\\w.])(${OCTET})\\.(${OCTET})\\.(${OCTET})\\.(${OCTET})(?!\\w|\\.\\d)`,
+  "g",
+);
+
+const USER_PATHS = [
+  /[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s"'<>|*?]+/g,
+  /(?<![\w.-])\/[a-z]\/Users\/[^/\s"']+/g,
+  /(?<![\w.-])\/home\/[A-Za-z0-9._-]+\//g,
+  /(?<![\w.-])\/Users\/[A-Za-z0-9._ -]+\//g,
+  /AppData[\\/]/g,
+];
+
+const AI_NOUN = "(?:AI|LLMs?|language\\s+models?|chatbots?|assistants?)";
+const ATTRIBUTION = [
+  new RegExp(
+    `\\b(?:generated|written|created|authored|produced|assisted|drafted)\\s+(?:with|by|using)\\s+(?:an?\\s+|the\\s+)?${AI_NOUN}\\b`,
+    "gi",
+  ),
+  /\bAI[- ](?:generated|assisted)\b/gi,
+];
+
+/** A co-author trailer with an address, at the start of a line, as a blob can carry one. */
+const TRAILER_LINE = /^[ \t]*co-authored-by[ \t]*:[^\n]*<[^<>\s]+@[^<>\s]+>/im;
+
 /** Blobs are read in groups of at most this many bytes, so memory stays bounded. */
 const BATCH_BYTES = 64 * 1024 * 1024;
 
@@ -195,14 +238,52 @@ function around(text, index, length, radius = 14) {
   return tidy(text.slice(Math.max(0, index - radius), index + length + radius));
 }
 
-/** What is wrong with one piece of content, as `{ rule, excerpt }`. Text only for the dash rule. */
-function analyze(content) {
+/** `private-ipv4`, `public-ipv4`, or null for the documentation, loopback and unspecified ranges. */
+function classifyAddress(a, b, c, d) {
+  if (a === 127 || (a === 0 && b === 0 && c === 0 && d === 0)) return null;
+  if ((a === 192 && b === 0 && c === 2) || (a === 198 && b === 51 && c === 100)) return null;
+  if (a === 203 && b === 0 && c === 113) return null;
+  const isPrivate =
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127);
+  return isPrivate ? "private-ipv4" : "public-ipv4";
+}
+
+const mask = (secret) => `${secret.slice(0, 6)}...`;
+
+/** Keys, addresses, local user paths and attribution phrasing in text. Key matches are masked. */
+function shapeFindings(text, { trailer = true } = {}) {
   const found = [];
-  if (!content.binary) {
-    for (const match of content.text.matchAll(LONG_DASH)) {
-      found.push({ rule: "long-dash", excerpt: around(content.text, match.index, 1) });
+  for (const pattern of KEY_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      found.push({ rule: "key-shape", excerpt: mask(match[0]) });
     }
   }
+  for (const match of text.matchAll(IPV4)) {
+    const [a = 0, b = 0, c = 0, d = 0] = match.slice(1, 5).map(Number);
+    const rule = classifyAddress(a, b, c, d);
+    if (rule) found.push({ rule, excerpt: match[0] });
+  }
+  for (const pattern of USER_PATHS) {
+    for (const match of text.matchAll(pattern)) {
+      found.push({ rule: "local-user-path", excerpt: tidy(match[0].slice(0, 60)) });
+    }
+  }
+  for (const pattern of ATTRIBUTION) {
+    for (const match of text.matchAll(pattern)) {
+      found.push({ rule: "ai-attribution", excerpt: tidy(match[0].slice(0, 60)) });
+    }
+  }
+  if (trailer && TRAILER_LINE.test(text)) {
+    found.push({ rule: "co-author trailer", excerpt: "trailer line with an address" });
+  }
+  return found;
+}
+
+function unique(found) {
   const seen = new Set();
   return found.filter((finding) => {
     const key = `${finding.rule}\0${finding.excerpt}`;
@@ -210,6 +291,17 @@ function analyze(content) {
     seen.add(key);
     return true;
   });
+}
+
+/** What is wrong with one blob, as `{ rule, excerpt }`. Text only for the dash rule. */
+function analyze(content) {
+  const found = shapeFindings(content.text);
+  if (!content.binary) {
+    for (const match of content.text.matchAll(LONG_DASH)) {
+      found.push({ rule: "long-dash", excerpt: around(content.text, match.index, 1) });
+    }
+  }
+  return unique(found);
 }
 
 /** Paths an ignore rule covers, by .gitignore and .git/info/exclude only, never the user's own excludes. */
@@ -255,18 +347,27 @@ function main() {
     for (const problem of checkMessage(commit.message, MESSAGE_RULES, { verbatim: true })) {
       report(problem.rule, commit, "(message)", `line ${problem.line}`);
     }
+    for (const finding of unique(shapeFindings(commit.message, { trailer: false }))) {
+      report(finding.rule, commit, "(message)", finding.excerpt);
+    }
   }
 
   const findings = new Map();
   const shas = [...new Set(pairs.map((pair) => pair.sha))];
-  readBlobs(repo, shas, (sha, buf) => {
+  const sizes = readBlobs(repo, shas, (sha, buf) => {
     findings.set(sha, analyze(decode(buf)));
   });
+  const mediaBlobs = new Set();
   for (const pair of pairs) {
     for (const finding of findings.get(pair.sha) ?? []) {
       report(finding.rule, pair.commit, pair.path, finding.excerpt);
     }
+    const size = sizes.get(pair.sha) ?? 0;
+    if (size > MAX_BLOB_BYTES) report("oversize-blob", pair.commit, pair.path, `${size} bytes`);
+    if (MEDIA.test(pair.path)) mediaBlobs.add(pair.sha);
   }
+  let mediaBytes = 0;
+  for (const sha of mediaBlobs) mediaBytes += sizes.get(sha) ?? 0;
 
   const firstCommit = new Map();
   for (const pair of pairs)
@@ -281,9 +382,12 @@ function main() {
     const id = v.commit ? v.commit.hash.slice(0, 7) : "-";
     console.log(`${v.rule} | ${id} | ${v.where} | ${v.excerpt}`);
   }
-  const identities = new Set(commits.flatMap((commit) => [commit.author, commit.committer]));
+  const identities = [
+    ...new Set(commits.flatMap((commit) => [commit.author, commit.committer])),
+  ].sort();
+  for (const who of identities) console.log(`identity: ${who}`);
   console.log(
-    `scan-history: commits=${commits.length} blobs=${shas.length} paths=${paths.length} identities=${identities.size} violations=${violations.length}`,
+    `scan-history: commits=${commits.length} blobs=${shas.length} paths=${paths.length} identities=${identities.length} violations=${violations.length} media-bytes=${mediaBytes}`,
   );
   return violations.length === 0 ? 0 : 1;
 }
