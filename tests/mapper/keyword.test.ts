@@ -1,8 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { network } from "../../src/content/network";
 import { techniques } from "../../src/content/techniques";
 import { buildMapperContext } from "../../src/mapper/context";
-import { keywordMapper, mapKeywords, words } from "../../src/mapper/keyword";
+import {
+  keywordMapper,
+  mapKeywords,
+  NOTHING_MATCHED_EXAMPLES,
+  words,
+} from "../../src/mapper/keyword";
 import { MAX_INTENTS } from "../../src/mapper/schema";
 import { SYNONYMS, TARGET_HINTS } from "../../src/mapper/synonyms";
 
@@ -183,6 +189,27 @@ describe("the keyword matcher", () => {
         );
         owner.set(key, technique);
       }
+    }
+  });
+});
+
+describe("the examples the page offers", () => {
+  it("every example the nothing-matched note offers maps to a technique", () => {
+    const note = mapKeywords("make me a sandwich", ctx).note ?? "";
+    expect(NOTHING_MATCHED_EXAMPLES.length).toBeGreaterThan(0);
+    for (const example of NOTHING_MATCHED_EXAMPLES) {
+      expect(ids(example).length, example).toBeGreaterThan(0);
+      expect(note).toContain(example);
+    }
+  });
+
+  it("every phrase of the free-text placeholder maps to a technique", () => {
+    const html = readFileSync("index.html", "utf8");
+    const tag = /<input[^>]*id="freetext-input"[^>]*>/.exec(html)?.[0] ?? "";
+    const placeholder = /placeholder="([^"]*)"/.exec(tag)?.[1] ?? "";
+    expect(placeholder).not.toBe("");
+    for (const phrase of placeholder.split(",").map((p) => p.trim())) {
+      expect(ids(phrase).length, phrase).toBeGreaterThan(0);
     }
   });
 });

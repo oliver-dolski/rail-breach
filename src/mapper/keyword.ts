@@ -59,6 +59,18 @@ export function words(text: string): string[] {
     .map((t) => t.word);
 }
 
+/**
+ * What the nothing-matched note suggests. Each one is a phrase the matcher maps (a test
+ * pins that), and bare "spoof" is not among them: it would be ambiguous between a spoofed
+ * command message and spoofed reports.
+ */
+export const NOTHING_MATCHED_EXAMPLES: readonly string[] = [
+  "phishing",
+  "vpn",
+  "scan the network",
+  "spoof the reports",
+];
+
 /** Words up to this long must be the whole word (plus an ending), not just the start of one. */
 const SHORT_WORD = 4;
 
@@ -261,8 +273,7 @@ export function mapKeywords(text: string, ctx: MapperContext): MapResult {
   const result: MapResult = { intents, source: "keyword" };
   if (unmatched.length > 0) result.unmatched = unmatched;
   if (intents.length === 0) {
-    result.note =
-      "Nothing matched. Try a technique name, an ID such as T0865, or words like phishing, vpn, scan, spoof.";
+    result.note = `Nothing matched. Try a technique name, an ID such as T0865, or words like ${NOTHING_MATCHED_EXAMPLES.join(", ")}.`;
   } else if (unmatched.length > 0) {
     result.note = `Ignored: ${unmatched.join(", ")}.`;
   }

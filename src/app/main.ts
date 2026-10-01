@@ -24,7 +24,7 @@ import {
 import { createLabels } from "../ui/labels";
 import { createComparePanel } from "../ui/panel/compare";
 import { createDefensePalette } from "../ui/panel/defense";
-import { createFreeText } from "../ui/panel/freetext";
+import { chipNamesFrom, createFreeText } from "../ui/panel/freetext";
 import { createKeyPanel } from "../ui/panel/llmkey";
 import { createNames, EventLog } from "../ui/panel/log";
 import { createPanel } from "../ui/panel/panel";
@@ -103,6 +103,7 @@ function boot(): void {
   const keyPanel = createKeyPanel(document, keystore);
   createFreeText(document, {
     ctx: mapperContext,
+    names: chipNamesFrom(layout),
     mapper: createLlmMapper({ keystore, fallback: keywordMapper, model: keyPanel.model }),
     onAction: submit,
   });
