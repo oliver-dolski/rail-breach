@@ -13,10 +13,17 @@
 // directory, removed before it exits.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { checkMessage, MESSAGE_RULES } from "./lib/hygiene.mjs";
+import {
+  checkMessage,
+  denyRules,
+  escapeRe,
+  MESSAGE_RULES,
+  parseDenyEntries,
+  phraseRegex,
+} from "./lib/hygiene.mjs";
 
 const EM_DASH = String.fromCharCode(0x2014);
 const EN_DASH = String.fromCharCode(0x2013);
@@ -65,6 +72,16 @@ const ATTRIBUTION = [
 
 /** A co-author trailer with an address, at the start of a line, as a blob can carry one. */
 const TRAILER_LINE = /^[ \t]*co-authored-by[ \t]*:[^\n]*<[^<>\s]+@[^<>\s]+>/im;
+
+/** The untracked lists under .git/info, by role. */
+const LOCAL_FILES = {
+  deny: "commit-msg-deny",
+  literals: "history-scan-deny",
+  allow: "history-scan-allow",
+};
+/** The characters around a single-word match that make up its token. */
+const TOKEN_CHAR = /[A-Za-z0-9@._:/-]/;
+const TOKEN_REACH = 120;
 
 /** Blobs are read in groups of at most this many bytes, so memory stays bounded. */
 const BATCH_BYTES = 64 * 1024 * 1024;
@@ -173,6 +190,7 @@ function readPairs(repo, commits) {
 /** Calls `visit(sha, bytes)` once per blob, reading in bounded groups. */
 function readBlobs(repo, shas, visit) {
   const sizes = new Map();
+  if (shas.length === 0) return sizes;
   const checked = git(repo, ["cat-file", "--batch-check"], { input: `${shas.join("\n")}\n` })
     .toString("utf8")
     .split("\n");
@@ -283,25 +301,139 @@ function shapeFindings(text, { trailer = true } = {}) {
   return found;
 }
 
+/** Merges findings with the same rule and excerpt, counting how often each occurred. */
 function unique(found) {
-  const seen = new Set();
-  return found.filter((finding) => {
+  const merged = new Map();
+  for (const finding of found) {
     const key = `${finding.rule}\0${finding.excerpt}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const known = merged.get(key);
+    if (known) known.count += 1;
+    else merged.set(key, { ...finding, count: 1 });
+  }
+  return [...merged.values()];
+}
+
+/** The longest run of token characters around a match: the unit the allow file declares. */
+function tokenAround(text, start, length) {
+  let from = start;
+  let to = start + length;
+  while (from > 0 && start - from < TOKEN_REACH && TOKEN_CHAR.test(text[from - 1] ?? "")) {
+    from -= 1;
+  }
+  while (to < text.length && to - start - length < TOKEN_REACH && TOKEN_CHAR.test(text[to] ?? "")) {
+    to += 1;
+  }
+  return text.slice(from, to);
+}
+
+/**
+ * The local layers, built from the untracked lists. Each entry remembers the list and line it came
+ * from, so output can point at it without repeating the phrase.
+ *  - strong: deny phrases of several words or shaped like an address, fail anywhere.
+ *  - single: one-word deny phrases, fail unless the token around them is declared for the path.
+ *  - literals: employer and operator literals, fail anywhere; "cs:" means an exact whole word.
+ *  - messageRules: all of the above as rules for checkMessage, the hook's own matcher.
+ */
+function buildLayers(local) {
+  const layers = { strong: [], single: [], literals: [], messageRules: [] };
+  for (const { phrase, line } of local.deny ?? []) {
+    const entry = { re: phraseRegex(phrase, "gi"), source: `${LOCAL_FILES.deny} line ${line}` };
+    if (/\s|@/.test(phrase)) layers.strong.push(entry);
+    else layers.single.push(entry);
+    layers.messageRules.push(...denyRules([phrase]));
+  }
+  for (const { phrase, line } of local.literals ?? []) {
+    const exact = phrase.startsWith("cs:");
+    const make = (flags) =>
+      exact
+        ? new RegExp(`(?<![A-Za-z0-9])${escapeRe(phrase.slice(3))}(?![A-Za-z0-9])`, flags)
+        : phraseRegex(phrase, flags);
+    layers.literals.push({
+      re: make(exact ? "g" : "gi"),
+      source: `${LOCAL_FILES.literals} line ${line}`,
+    });
+    layers.messageRules.push({ name: "operator-literal", re: make(exact ? "" : "i") });
+  }
+  return layers;
+}
+
+/**
+ * Local-layer findings in a string. With `tokens`, a single word is reported as the token around it
+ * (blobs, where the allow file can declare it); without, as the list line (paths and identities).
+ */
+function layerFindings(text, layers, { tokens = true } = {}) {
+  const found = [];
+  for (const [list, rule] of [
+    [layers.strong, "denied-phrase"],
+    [layers.literals, "operator-literal"],
+  ]) {
+    for (const { re, source } of list) {
+      re.lastIndex = 0;
+      if (re.test(text)) found.push({ rule, excerpt: source });
+      re.lastIndex = 0;
+    }
+  }
+  for (const { re, source } of layers.single) {
+    for (const match of text.matchAll(re)) {
+      if (!tokens) {
+        found.push({ rule: "denied-phrase", excerpt: source });
+        break;
+      }
+      const token = tokenAround(text, match.index, match[0].length);
+      found.push({ rule: "denied-phrase", excerpt: token, token });
+    }
+  }
+  return found;
 }
 
 /** What is wrong with one blob, as `{ rule, excerpt }`. Text only for the dash rule. */
-function analyze(content) {
-  const found = shapeFindings(content.text);
+function analyze(content, layers) {
+  const found = [...shapeFindings(content.text), ...layerFindings(content.text, layers)];
   if (!content.binary) {
     for (const match of content.text.matchAll(LONG_DASH)) {
       found.push({ rule: "long-dash", excerpt: around(content.text, match.index, 1) });
     }
   }
   return unique(found);
+}
+
+/** Lines of path, a tab, the exact token and optionally a tab and a reason; # starts a comment. */
+function parseAllow(text) {
+  const allowed = new Map();
+  let entries = 0;
+  text.split(/\r?\n/).forEach((raw, index) => {
+    if (raw.trim() === "" || raw.trimStart().startsWith("#")) return;
+    const [path = "", token = ""] = raw.split("\t").map((field) => field.trim());
+    if (path === "" || token === "") {
+      throw new ScanError(
+        `${LOCAL_FILES.allow} line ${index + 1}: expected a path, a tab and the exact token`,
+      );
+    }
+    const tokens = allowed.get(path) ?? new Set();
+    tokens.add(token);
+    allowed.set(path, tokens);
+    entries += 1;
+  });
+  return { allowed, entries };
+}
+
+/** Reads the three lists of the scanned repository; a file that does not exist is null. */
+function readLocal(repo) {
+  const text = {};
+  for (const [role, name] of Object.entries(LOCAL_FILES)) {
+    const path = gitText(repo, [
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-path",
+      `info/${name}`,
+    ]);
+    text[role] = existsSync(path) ? readFileSync(path, "utf8") : null;
+  }
+  return {
+    deny: text.deny === null ? null : parseDenyEntries(text.deny),
+    literals: text.literals === null ? null : parseDenyEntries(text.literals),
+    allow: text.allow === null ? null : parseAllow(text.allow),
+  };
 }
 
 /** Paths an ignore rule covers, by .gitignore and .git/info/exclude only, never the user's own excludes. */
@@ -334,32 +466,72 @@ function ignoredPaths(repo, paths) {
   }
 }
 
+const LAYER_NAMES = { deny: "deny-phrase", literals: "operator-literal" };
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const repo = resolveRepo(options.repo);
+  const local = readLocal(repo);
+  const layers = buildLayers(local);
   const commits = readCommits(repo);
   const pairs = readPairs(repo, commits);
   const violations = [];
   const report = (rule, commit, where, excerpt) =>
     violations.push({ rule, order: commit ? commit.index : -1, commit, where, excerpt });
 
+  for (const [role, name] of Object.entries(LOCAL_FILES)) {
+    if (local[role] !== null) continue;
+    if (options.requireLocal && !options.inventory) {
+      report("missing-local-file", null, `.git/info/${name}`, "required by --require-local");
+    } else if (role !== "allow") {
+      console.error(
+        `WARNING: .git/info/${name} not found, the ${LAYER_NAMES[role]} layer is skipped`,
+      );
+    }
+  }
+  if (gitText(repo, ["rev-parse", "--is-shallow-repository"]) === "true") {
+    report("shallow-repository", null, "(repository)", "history is incomplete, fetch all of it");
+  }
+
+  const allowed = local.allow?.allowed ?? new Map();
+  const findings = new Map();
+  const shas = [...new Set(pairs.map((pair) => pair.sha))];
+  const sizes = readBlobs(repo, shas, (sha, buf) => {
+    findings.set(sha, analyze(decode(buf), layers));
+  });
+
+  if (options.inventory) {
+    return inventory(pairs, findings, allowed);
+  }
+
+  const messageRules = [...MESSAGE_RULES, ...layers.messageRules];
+  const identityFirst = new Map();
   for (const commit of commits) {
-    for (const problem of checkMessage(commit.message, MESSAGE_RULES, { verbatim: true })) {
+    for (const problem of checkMessage(commit.message, messageRules, { verbatim: true })) {
       report(problem.rule, commit, "(message)", `line ${problem.line}`);
     }
     for (const finding of unique(shapeFindings(commit.message, { trailer: false }))) {
       report(finding.rule, commit, "(message)", finding.excerpt);
     }
+    for (const [role, who] of [
+      ["(author)", commit.author],
+      ["(committer)", commit.committer],
+    ]) {
+      const key = `${role}\0${who}`;
+      if (!identityFirst.has(key)) identityFirst.set(key, { role, who, commit });
+    }
+  }
+  for (const { role, who, commit } of identityFirst.values()) {
+    for (const finding of layerFindings(who, layers, { tokens: false })) {
+      report(finding.rule, commit, role, finding.excerpt);
+    }
   }
 
-  const findings = new Map();
-  const shas = [...new Set(pairs.map((pair) => pair.sha))];
-  const sizes = readBlobs(repo, shas, (sha, buf) => {
-    findings.set(sha, analyze(decode(buf)));
-  });
   const mediaBlobs = new Set();
   for (const pair of pairs) {
+    const declared = allowed.get(pair.path);
     for (const finding of findings.get(pair.sha) ?? []) {
+      if (finding.token !== undefined && declared?.has(finding.token)) continue;
       report(finding.rule, pair.commit, pair.path, finding.excerpt);
     }
     const size = sizes.get(pair.sha) ?? 0;
@@ -370,9 +542,15 @@ function main() {
   for (const sha of mediaBlobs) mediaBytes += sizes.get(sha) ?? 0;
 
   const firstCommit = new Map();
-  for (const pair of pairs)
+  for (const pair of pairs) {
     if (!firstCommit.has(pair.path)) firstCommit.set(pair.path, pair.commit);
+  }
   const paths = [...firstCommit.keys()];
+  for (const path of paths) {
+    for (const finding of layerFindings(path, layers, { tokens: false })) {
+      report(finding.rule, firstCommit.get(path), path, finding.excerpt);
+    }
+  }
   for (const [path, rule] of ignoredPaths(repo, paths)) {
     report("ignored-path", firstCommit.get(path), path, rule);
   }
@@ -386,10 +564,47 @@ function main() {
     ...new Set(commits.flatMap((commit) => [commit.author, commit.committer])),
   ].sort();
   for (const who of identities) console.log(`identity: ${who}`);
+  const count = (list) => (list === null ? "absent" : String(list.length ?? list.entries));
+  console.log(
+    `local-layers: ${LOCAL_FILES.deny}=${count(local.deny)} ${LOCAL_FILES.literals}=${count(local.literals)} ${LOCAL_FILES.allow}=${count(local.allow)}`,
+  );
   console.log(
     `scan-history: commits=${commits.length} blobs=${shas.length} paths=${paths.length} identities=${identities.length} violations=${violations.length} media-bytes=${mediaBytes}`,
   );
   return violations.length === 0 ? 0 : 1;
+}
+
+/**
+ * Lists every (path, token) occurrence of the single-word deny phrases, so the allow file can be
+ * written from facts. `count` adds up the occurrences over every distinct revision of the path.
+ */
+function inventory(pairs, findings, allowed) {
+  const rows = new Map();
+  for (const pair of pairs) {
+    for (const finding of findings.get(pair.sha) ?? []) {
+      if (finding.token === undefined) continue;
+      const key = `${pair.path}\0${finding.token}`;
+      const row = rows.get(key) ?? {
+        path: pair.path,
+        token: finding.token,
+        count: 0,
+        commit: pair.commit,
+        declared: allowed.get(pair.path)?.has(finding.token) === true,
+      };
+      row.count += finding.count;
+      rows.set(key, row);
+    }
+  }
+  const sorted = [...rows.values()].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : a.token < b.token ? -1 : 1,
+  );
+  for (const row of sorted) {
+    console.log(
+      `inventory | ${row.commit.hash.slice(0, 7)} | ${row.path} | ${row.token} | count=${row.count} | declared=${row.declared ? "yes" : "no"}`,
+    );
+  }
+  console.log(`scan-history: inventory entries=${sorted.length}`);
+  return 0;
 }
 
 try {
