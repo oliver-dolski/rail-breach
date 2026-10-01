@@ -124,6 +124,32 @@ async function run(target) {
     })()`);
     await browser.send("Emulation.clearDeviceMetricsOverride");
 
+    // A narrow window: the stage controls must sit beside the view switch, not on it, at touch size.
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 820,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await browser.evaluate(
+      "new Promise((done) => { const t = setTimeout(done, 1500); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); done(); })); })",
+    );
+    const narrow = await browser.evaluate(`(() => {
+      const box = (id) => document.getElementById(id)?.getBoundingClientRect();
+      const switchBox = box("view-mode");
+      const controls = box("stage-controls");
+      const follow = box("follow-attack");
+      const found = Boolean(switchBox && controls && follow);
+      const apart =
+        found &&
+        (switchBox.right <= controls.left ||
+          controls.right <= switchBox.left ||
+          switchBox.bottom <= controls.top ||
+          controls.bottom <= switchBox.top);
+      return { found, apart, followHeight: follow ? follow.height : 0 };
+    })()`);
+    await browser.send("Emulation.clearDeviceMetricsOverride");
+
     const origin = new URL(target).origin;
     const net = networkLog(browser.events);
     const isFavicon = (url) => new URL(url).pathname === "/favicon.ico";
@@ -261,6 +287,15 @@ async function run(target) {
           fold.eventsOpen,
         [
           `attack chain card ends at ${Math.round(fold.chainBottom)} of ${fold.height}, next card starts at ${Math.round(fold.nextTop)}`,
+        ],
+      ],
+      [
+        "14 stage controls clear of the view switch at 820 px",
+        narrow.found && narrow.apart && narrow.followHeight >= 44,
+        [
+          narrow.found
+            ? `view switch and stage controls ${narrow.apart ? "do not overlap" : "overlap"}, Follow attack is ${Math.round(narrow.followHeight)} px high`
+            : "#view-mode, #stage-controls or #follow-attack is missing",
         ],
       ],
     ];

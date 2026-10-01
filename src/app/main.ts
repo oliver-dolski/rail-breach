@@ -39,6 +39,7 @@ import { createViewToggle } from "../ui/panel/viewmode";
 import { CAPTURE_FRAME_MS, createManualFrames, installCaptureHook } from "./capture";
 import { catalog, entryFor } from "./catalog";
 import { compareSession, defenseCount } from "./compare";
+import { createFollowSwitch } from "./follow";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { watchReducedMotion } from "./motion";
@@ -133,8 +134,27 @@ function boot(): void {
   const motion = watchReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)"), (on) => {
     reducedMotion = on;
     renderer?.setReducedMotion(on);
+    follow.setReducedMotion(on);
+    syncFollow();
   });
   let reducedMotion = motion.current();
+  const follow = createFollowSwitch(reducedMotion);
+  const followButton = byId<HTMLButtonElement>("follow-attack");
+  /** The pill shows what the switch says: pressed while the camera follows, disabled with a reason under reduced motion. */
+  let shownPressed: boolean | undefined;
+  const syncFollow = (): void => {
+    // Pointer moves call this too; the page is only written when the switch really changed.
+    if (shownPressed === follow.pressed() && followButton.disabled === follow.disabled()) return;
+    shownPressed = follow.pressed();
+    followButton.setAttribute("aria-pressed", String(shownPressed));
+    followButton.disabled = follow.disabled();
+    followButton.title = follow.title();
+  };
+  syncFollow();
+  followButton.addEventListener("click", () => {
+    follow.toggle();
+    syncFollow();
+  });
 
   const fallbackEls = {
     canvas,
@@ -235,6 +255,27 @@ function boot(): void {
       const conduit = conduitAt(event);
       if (conduit !== undefined) defenses.place(conduit);
     });
+    // The viewer takes the camera back with the wheel or a drag; a click that places a defense is neither.
+    canvas.addEventListener(
+      "wheel",
+      () => {
+        follow.wheel();
+        syncFollow();
+      },
+      { passive: true },
+    );
+    const localPoint = (event: PointerEvent): [number, number] => {
+      const rect = canvas.getBoundingClientRect();
+      return [event.clientX - rect.left, event.clientY - rect.top];
+    };
+    canvas.addEventListener("pointerdown", (event) => follow.pointerDown(...localPoint(event)));
+    canvas.addEventListener("pointermove", (event) => {
+      follow.pointerMove(...localPoint(event));
+      syncFollow();
+    });
+    for (const type of ["pointerup", "pointercancel", "pointerleave"] as const) {
+      canvas.addEventListener(type, () => follow.pointerUp());
+    }
     canvas.addEventListener("pointermove", (event) => {
       const cursor = conduitAt(event) === undefined ? "default" : "pointer";
       if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
@@ -345,7 +386,7 @@ function boot(): void {
         camera.step({
           world: session.world(),
           zoneOfNode: viewContext.nodeZone,
-          enabled: true,
+          enabled: follow.enabled(),
           reducedMotion,
         });
       }

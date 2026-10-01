@@ -10,6 +10,10 @@ import { CONDUIT_LABEL_DY, NODE_LABEL_DY } from "./view";
  * canvas the floor wins, the text stops shrinking with the map, and in map units it gets
  * bigger. A box is therefore computed for a given u, and a layout is only clear when it is
  * clear at every u the page can show.
+ *
+ * Under the follow camera the labels keep their CSS size (u stays the home scale) and only
+ * their positions move, so a label covers 1/zoom of the map area it covers at home. A box
+ * computed for a zoom therefore lies inside its box at zoom 1, and the home proof bounds it.
  */
 
 /** One label style, as written in style.css (`.lbl-*`). */
@@ -65,7 +69,8 @@ export function cssScale(canvasW: number, canvasH: number, layout: Layout): numb
 
 /**
  * The box of a label in map units at scale u, padded by LABEL_PAD_PX on every side.
- * `centred` labels are centred on x (translateX(-50%)); the others start at x.
+ * `centred` labels are centred on x (translateX(-50%)); the others start at x. `zoom` is the
+ * camera zoom (1 at home): the text stays the same size on screen, so it takes 1/zoom of the map.
  */
 export function labelBox(
   kind: LabelKind,
@@ -74,14 +79,16 @@ export function labelBox(
   top: number,
   centred: boolean,
   u: number,
+  zoom = 1,
 ): Box {
   const style: LabelStyle = LABEL_STYLES[kind];
   const font = Math.max(style.floor, u * style.size);
   const width = text.length * font * (CHAR_EM + style.spacing);
-  const pad = LABEL_PAD_PX / u;
-  const w = width / u;
+  const perUnit = u * zoom;
+  const pad = LABEL_PAD_PX / perUnit;
+  const w = width / perUnit;
   const x0 = centred ? at.x - w / 2 : at.x;
-  return { x0: x0 - pad, y0: top - pad, x1: x0 + w + pad, y1: top + font / u + pad };
+  return { x0: x0 - pad, y0: top - pad, x1: x0 + w + pad, y1: top + font / perUnit + pad };
 }
 
 /** The conduit captions the map shows: id, text and anchor (on one of the conduit's links). */
@@ -97,27 +104,32 @@ export function placeLabels(
   layout: Layout,
   marks: readonly ConduitMark[],
   u: number,
+  zoom = 1,
 ): PlacedLabel[] {
   const out: PlacedLabel[] = [];
   for (const z of layout.zones) {
     const at = { x: z.x + ZONE_LABEL_DX, y: z.y + ZONE_LABEL_DY };
-    out.push({ kind: "zone", id: z.id, box: labelBox("zone", z.label, at, at.y, false, u) });
+    out.push({ kind: "zone", id: z.id, box: labelBox("zone", z.label, at, at.y, false, u, zoom) });
   }
   for (const [id, n] of Object.entries(layout.nodes)) {
-    out.push({ kind: "node", id, box: labelBox("node", n.label, n, n.y + NODE_LABEL_DY, true, u) });
+    out.push({
+      kind: "node",
+      id,
+      box: labelBox("node", n.label, n, n.y + NODE_LABEL_DY, true, u, zoom),
+    });
   }
   for (const s of layout.stations) {
     out.push({
       kind: "station",
       id: s.name,
-      box: labelBox("station", s.name, s, s.y + STATION_LABEL_DY, true, u),
+      box: labelBox("station", s.name, s, s.y + STATION_LABEL_DY, true, u, zoom),
     });
   }
   for (const m of marks) {
     out.push({
       kind: "conduit",
       id: m.id,
-      box: labelBox("conduit", m.label, m, m.y + CONDUIT_LABEL_DY, true, u),
+      box: labelBox("conduit", m.label, m, m.y + CONDUIT_LABEL_DY, true, u, zoom),
     });
   }
   return out;

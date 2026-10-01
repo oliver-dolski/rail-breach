@@ -24,6 +24,7 @@ import {
   stepCamera,
 } from "../../src/render/camera";
 import { fitMap, screenToMap } from "../../src/render/geometry";
+import { placeLabels } from "../../src/render/labelgeometry";
 import { createViewContext, nearestConduit } from "../../src/render/view";
 import { networkIndex, warmWorld } from "../fixtures/attack";
 
@@ -473,5 +474,41 @@ describe("measured camera ticks", { timeout: 60000 }, () => {
     expect(phishing?.latch).toBeGreaterThan(0);
     expect(phishing?.latch).toBeLessThan(340);
     expect(phishing?.home).toBeLessThan(340);
+  });
+});
+
+describe("map labels under the camera zoom", () => {
+  it("keep their CSS size, so every box at zoom 1.0 to 1.3 lies inside its box at home", () => {
+    const marks = ctx.conduitMarks;
+    let strictlySmaller = 0;
+    for (let u = 0.5; u <= 1.1001; u += 0.1) {
+      const home = placeLabels(layout, marks, u, 1);
+      for (const zoom of [1, 1.1, 1.2, 1.3]) {
+        const zoomed = placeLabels(layout, marks, u, zoom);
+        expect(zoomed).toHaveLength(home.length);
+        zoomed.forEach((label, i) => {
+          const base = home[i];
+          expect(base).toBeDefined();
+          if (!base) return;
+          expect(label.id).toBe(base.id);
+          expect(label.box.x0, `${label.kind} ${label.id}`).toBeGreaterThanOrEqual(
+            base.box.x0 - 1e-9,
+          );
+          expect(label.box.y0).toBeGreaterThanOrEqual(base.box.y0 - 1e-9);
+          expect(label.box.x1).toBeLessThanOrEqual(base.box.x1 + 1e-9);
+          expect(label.box.y1).toBeLessThanOrEqual(base.box.y1 + 1e-9);
+          if (zoom === 1.3 && label.box.x1 - label.box.x0 < base.box.x1 - base.box.x0) {
+            strictlySmaller++;
+          }
+        });
+      }
+    }
+    expect(strictlySmaller).toBeGreaterThan(0);
+  });
+
+  it("leave the zoom-1 boxes exactly as the home collision proof computes them", () => {
+    expect(placeLabels(layout, ctx.conduitMarks, 0.8)).toEqual(
+      placeLabels(layout, ctx.conduitMarks, 0.8, 1),
+    );
   });
 });
