@@ -279,3 +279,268 @@ describe("scan-history: messages, blobs and paths end to end", () => {
     expect((await scanIn(empty, ["--repo"])).code).toBe(2);
   });
 });
+
+/** The violation lines of the output that name a path (or "(message)"). */
+function linesFor(out: string, where: string): string[] {
+  return out.split("\n").filter((line) => line.includes(` | ${where} | `));
+}
+
+const words = (...parts: string[]) => parts.join(" ");
+const dots = (...parts: string[]) => parts.join(".");
+
+describe("scan-history: shape rules", () => {
+  it("fails key-shaped strings in old revisions and prints them masked", async () => {
+    const dir = fixture();
+    const provider = ["sk", "-", "Ab12".repeat(8)].join("");
+    const github = ["ghp", "_", "a1B2c3".repeat(7)].join("");
+    const aws = ["AKIA", "ABCDEFGHIJ123456"].join("");
+    const pem = ["-----BEGIN ", "RSA PRIVATE KEY", "-----"].join("");
+    commit(
+      dir,
+      {
+        "k/provider.txt": `key = ${provider}\n`,
+        "k/github.txt": `token: ${github}\n`,
+        "k/aws.txt": `id=${aws}\n`,
+        "k/pem.txt": `${pem}\nMIIE\n`,
+        "k/fine.txt": "a sk-short and risk-assessment-and-analysis-notes-here and ghp_short\n",
+      },
+      "add keys",
+    );
+    commit(
+      dir,
+      { "k/provider.txt": null, "k/github.txt": null, "k/aws.txt": null, "k/pem.txt": null },
+      "remove them again",
+    );
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    for (const [path, secret] of [
+      ["k/provider.txt", provider],
+      ["k/github.txt", github],
+      ["k/aws.txt", aws],
+      ["k/pem.txt", pem],
+    ] as const) {
+      const [line = ""] = linesFor(result.out, path);
+      expect(line, path).toContain("key-shape");
+      expect(line, path).toContain(`${secret.slice(0, 6)}...`);
+      expect(result.out, path).not.toContain(secret);
+      expect(result.out, path).not.toContain(secret.slice(0, 12));
+    }
+    expect(result.out).not.toContain("k/fine.txt");
+  });
+
+  it("separates private from other non-documentation IPv4 addresses and passes the rest", async () => {
+    const dir = fixture();
+    const bad: Record<string, string> = {
+      "ip/a10.txt": dots("10", "1", "2", "3"),
+      "ip/a172lo.txt": dots("172", "16", "5", "5"),
+      "ip/a172hi.txt": dots("172", "31", "0", "1"),
+      "ip/a192.txt": dots("192", "168", "1", "10"),
+      "ip/a169.txt": dots("169", "254", "1", "1"),
+      "ip/a100lo.txt": dots("100", "64", "0", "1"),
+      "ip/a100hi.txt": dots("100", "127", "255", "1"),
+      "ip/pub8.txt": dots("8", "8", "8", "8"),
+      "ip/pub172.txt": dots("172", "32", "0", "1"),
+      "ip/pub100.txt": dots("100", "128", "0", "1"),
+    };
+    const good: Record<string, string> = {
+      "ok/doc1.txt": dots("192", "0", "2", "7"),
+      "ok/doc2.txt": dots("198", "51", "100", "7"),
+      "ok/doc3.txt": dots("203", "0", "113", "7"),
+      "ok/loop.txt": dots("127", "0", "0", "1"),
+      "ok/zero.txt": dots("0", "0", "0", "0"),
+      "ok/range.txt": dots("1", "2", "3", "456"),
+      "ok/three.txt": dots("1", "2", "3"),
+      "ok/five.txt": dots("1", "2", "3", "4", "5"),
+      "ok/version.txt": `v${dots("1", "2", "3", "4")} and build${dots("5", "6", "7", "8")}`,
+      "ok/big.txt": dots("300", "1", "1", "1"),
+    };
+    const files: Files = {};
+    for (const [path, address] of Object.entries({ ...bad, ...good })) {
+      files[path] = `host ${address} end\n`;
+    }
+    commit(dir, files, "add addresses");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    for (const path of Object.keys(bad)) {
+      const [line = ""] = linesFor(result.out, path);
+      const rule = /pub/.test(path) ? "public-ipv4" : "private-ipv4";
+      expect(line, path).toContain(rule);
+    }
+    for (const path of Object.keys(good)) expect(result.out, path).not.toContain(path);
+  });
+
+  it("fails local user paths and passes placeholders", async () => {
+    const dir = fixture();
+    const bs = String.fromCharCode(0x5c);
+    const bad: Record<string, string> = {
+      "p/win.txt": ["C:", "Users", "jdoe", "src"].join(bs),
+      "p/winslash.txt": `C:/${["Users", "jdoe", "src"].join("/")}`,
+      "p/escaped.txt": ["C:", "Users", "jdoe"].join(bs + bs),
+      "p/gitbash.txt": `/c/${["Users", "jdoe", "src"].join("/")}`,
+      "p/linux.txt": `/${["home", "jdoe", "src"].join("/")}`,
+      "p/mac.txt": `/${["Users", "jdoe", "src"].join("/")}`,
+      "p/appdata.txt": ["x", ["App", "Data"].join(""), "Local"].join(bs),
+    };
+    const good: Record<string, string> = {
+      "q/placeholder.txt": ["C:", "Users", "<name>", "src"].join(bs),
+      "q/relative.txt": "see src/home/readme and the Users panel",
+    };
+    const files: Files = {};
+    for (const [path, text] of Object.entries({ ...bad, ...good })) files[path] = `at ${text}\n`;
+    commit(dir, files, "add paths");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    for (const path of Object.keys(bad)) {
+      expect(linesFor(result.out, path)[0] ?? "", path).toContain("local-user-path");
+    }
+    for (const path of Object.keys(good)) expect(result.out, path).not.toContain(path);
+  });
+
+  it("fails AI-attribution phrasing and passes ordinary uses of the words", async () => {
+    const dir = fixture();
+    const trailer = ["Co-Authored-By", ": Helper <helper@example.test>"].join("");
+    const bad: Record<string, string> = {
+      "a/gen.txt": words("Generated", "with", "an", "AI"),
+      "a/written.txt": words("written", "by", "a", "language", "model"),
+      "a/created.txt": words("Created", "using", "an", "LLM"),
+      "a/assisted.txt": words("assisted", "by", "a", "chatbot"),
+      "a/authored.txt": words("authored", "with", "an", "assistant"),
+      "a/drafted.txt": words("drafted", "by", "the", "assistant"),
+      "a/hyphen.txt": ["AI", "generated"].join("-"),
+      "a/hyphen2.txt": ["AI", "assisted"].join("-"),
+      "a/trailer.txt": `Notes\n${trailer}\n`,
+    };
+    const good: Record<string, string> = {
+      "b/script.txt": "generated by scripts/build-attack.mjs",
+      "b/tool.txt": "Generated with a tool",
+      "b/hand.txt": "written by hand, produced using a lathe",
+      "b/panel.txt": "the assistant panel and the AI layer",
+      "b/inline.txt": `"${trailer}" in a string, mid-line`,
+    };
+    const files: Files = {};
+    for (const [path, text] of Object.entries({ ...bad, ...good })) {
+      files[path] = text.includes("\n") ? text : `${text}\n`;
+    }
+    commit(dir, files, "add phrases");
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    for (const path of Object.keys(bad)) {
+      const [line = ""] = linesFor(result.out, path);
+      expect(line, path).toMatch(/ai-attribution|co-author trailer/);
+    }
+    for (const path of Object.keys(good)) expect(result.out, path).not.toContain(path);
+  });
+
+  it("applies the shape rules to commit messages as well", async () => {
+    const dir = fixture();
+    const provider = ["sk", "-", "Zy98".repeat(8)].join("");
+    const message = [
+      "add things",
+      "",
+      `key ${provider}`,
+      `host ${dots("10", "9", "8", "7")}`,
+      words("written", "by", "an", "LLM"),
+      ["C:", "Users", "jdoe"].join(String.fromCharCode(0x5c)),
+    ].join("\n");
+    const bad = commit(dir, { "a.txt": "alpha\n" }, message);
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    const lines = linesFor(result.out, "(message)").join("\n");
+    for (const rule of ["key-shape", "private-ipv4", "ai-attribution", "local-user-path"]) {
+      expect(lines, rule).toContain(rule);
+    }
+    expect(lines).toContain(short(bad));
+    expect(result.out).not.toContain(provider);
+  });
+});
+
+describe("scan-history: binary blobs, size and identities", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+
+  it("scans binary blobs as bytes, so text hidden in metadata is found", async () => {
+    const dir = fixture();
+    const provider = ["sk", "-", "Qw34".repeat(8)].join("");
+    const meta = (text: string) => Buffer.concat([png, Buffer.from(`tEXt\0Comment\0${text}\0`)]);
+    commit(
+      dir,
+      {
+        "img/key.png": meta(`k=${provider}`),
+        "img/ip.png": meta(`h=${dots("10", "4", "4", "4")}`),
+        "img/who.png": meta(words("made", "by", "an", "LLM")),
+        "img/home.png": meta(`/${["home", "jdoe", "x"].join("/")}/`),
+        "img/clean.png": meta("nothing here"),
+      },
+      "add images",
+    );
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    expect(linesFor(result.out, "img/key.png")[0] ?? "").toContain("key-shape");
+    expect(linesFor(result.out, "img/ip.png")[0] ?? "").toContain("private-ipv4");
+    expect(linesFor(result.out, "img/who.png")[0] ?? "").toContain("ai-attribution");
+    expect(linesFor(result.out, "img/home.png")[0] ?? "").toContain("local-user-path");
+    expect(result.out).not.toContain("img/clean.png");
+    expect(result.out).not.toContain(provider);
+  });
+
+  it("applies the long-dash rule to text blobs only", async () => {
+    const dir = fixture();
+    commit(
+      dir,
+      { "img/dash.png": Buffer.concat([png, Buffer.from(`x${EM_DASH}y`, "utf8")]) },
+      "add binary with dash bytes",
+    );
+    const result = await scan(dir);
+    expect(result.out).not.toContain("long-dash");
+    expect(result.code).toBe(0);
+  });
+
+  it("fails a blob over 5 MiB with its size and passes one of exactly 5 MiB", async () => {
+    const dir = fixture();
+    const limit = 5 * 1024 * 1024;
+    commit(
+      dir,
+      {
+        "big/over.bin": Buffer.alloc(limit + 1, 0x61),
+        "big/exact.bin": Buffer.alloc(limit, 0x62),
+      },
+      "add big files",
+    );
+    const result = await scan(dir);
+    expect(result.code).toBe(1);
+    const [line = ""] = linesFor(result.out, "big/over.bin");
+    expect(line).toContain("oversize-blob");
+    expect(line).toContain(String(limit + 1));
+    expect(result.out).not.toContain("big/exact.bin");
+  });
+
+  it("reports the total size of image and video blobs in the summary", async () => {
+    const dir = fixture();
+    commit(
+      dir,
+      {
+        "m/a.png": Buffer.alloc(100, 1),
+        "m/b.mp4": Buffer.alloc(200, 2),
+        "m/c.webm": Buffer.alloc(300, 3),
+        "m/d.gif": Buffer.alloc(400, 4),
+        "m/e.jpg": Buffer.alloc(500, 5),
+        "m/same.png": Buffer.alloc(100, 1),
+        "m/notes.txt": "x".repeat(1000),
+      },
+      "add media",
+    );
+    const result = await scan(dir);
+    expect(result.out).toMatch(/media-bytes=1500\b/);
+  });
+
+  it("lists each distinct identity once in the summary", async () => {
+    const dir = fixture();
+    commit(dir, { "a.txt": "a\n" }, "one", "Ann Example <ann@example.test>");
+    commit(dir, { "b.txt": "b\n" }, "two", "Ann Example <ann@example.test>");
+    commit(dir, { "c.txt": "c\n" }, "three", "Bob Example <bob@example.test>");
+    const result = await scan(dir);
+    expect(result.out).toContain("identities=2");
+    for (const who of ["Ann Example <ann@example.test>", "Bob Example <bob@example.test>"]) {
+      expect(result.out.split(`identity: ${who}`).length - 1).toBe(1);
+    }
+  });
+});
