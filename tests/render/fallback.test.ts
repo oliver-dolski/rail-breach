@@ -111,7 +111,10 @@ describe("the page shell", () => {
   });
 
   it("pulls in no third-party script, style or font", () => {
-    expect(html).not.toMatch(/(src|href)="https?:\/\//);
+    // Anchors may point out (the ATT&CK terms link); nothing the page loads may.
+    expect(html).not.toMatch(
+      /<(script|link|img|iframe|source|video|audio|embed)\b[^>]*\b(src|href)="https?:\/\//,
+    );
     expect(html).not.toMatch(/fonts\.(googleapis|gstatic)/);
   });
 
