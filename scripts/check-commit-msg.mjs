@@ -8,36 +8,11 @@
 // It lives outside the repository (the hook passes .git/info/commit-msg-deny),
 // so machine-specific phrases never become part of the tracked rules. A
 // missing deny list is not an error.
+//
+// The rules themselves live in lib/hygiene.mjs, shared with the history scan.
 
-import { existsSync, readFileSync } from "node:fs";
-
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const RULES = [
-  { name: "co-author trailer", re: /^\s*co-authored-by\s*:/i },
-  { name: "generated-with banner", re: /generated with/i },
-  { name: "em dash", re: new RegExp(String.fromCharCode(0x2014)) },
-  { name: "en dash", re: new RegExp(String.fromCharCode(0x2013)) },
-];
-
-/** Drops what git itself discards: comment lines and everything below the scissors line. */
-function messageBody(text) {
-  const beforeScissors = text.split(/^# -+ >8 -+\s*$/m)[0] ?? "";
-  return beforeScissors.split(/\r?\n/).filter((line) => !line.startsWith("#"));
-}
-
-/** Turns each non-empty, non-comment line of the deny list into a rule. */
-function denyRules(path) {
-  if (!path || !existsSync(path)) return [];
-  return readFileSync(path, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.startsWith("#"))
-    .map((phrase) => ({
-      name: "denied phrase",
-      re: new RegExp(phrase.split(/\s+/).map(escapeRe).join("\\s+"), "i"),
-    }));
-}
+import { readFileSync } from "node:fs";
+import { checkMessage, denyRules, MESSAGE_RULES, readDenyList } from "./lib/hygiene.mjs";
 
 const file = process.argv[2];
 if (!file) {
@@ -55,18 +30,13 @@ try {
 
 let rules;
 try {
-  rules = [...RULES, ...denyRules(process.argv[3])];
+  rules = [...MESSAGE_RULES, ...denyRules(readDenyList(process.argv[3]))];
 } catch {
   console.error(`check-commit-msg: cannot read deny list ${process.argv[3]}`);
   process.exit(2);
 }
 
-const problems = [];
-messageBody(text).forEach((line, index) => {
-  for (const rule of rules) {
-    if (rule.re.test(line)) problems.push(`  line ${index + 1}: ${rule.name}`);
-  }
-});
+const problems = checkMessage(text, rules).map((p) => `  line ${p.line}: ${p.rule}`);
 
 if (problems.length > 0) {
   console.error("Commit rejected by the repository rules:");

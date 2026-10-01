@@ -34,6 +34,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The history scan below needs every commit, not only the tip.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -43,6 +45,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # In CI the untracked local lists are absent, so this is the detective backstop on the shape
+      # rules (keys, addresses, user paths, attribution phrasing, long dashes, ignored paths). The
+      # preventive gate is the local run with --require-local before the owner pushes.
+      - name: Scan the git history
+        run: npm run scan:history
 
       - name: Typecheck
         run: npm run typecheck
