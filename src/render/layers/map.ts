@@ -1,16 +1,19 @@
 import {
   blendPremultiplied,
   drawDiscs,
+  drawLineGroups,
   drawLines,
+  drawPanels,
   type Frame,
   type Primitives,
 } from "../gl/primitives";
 import type { RenderView } from "../view";
 
 /**
- * The map itself, drawn back to front: zone outlines, links, track, set routes, lit alert links,
- * trains, then the glyphs that must stay readable on top (signal lamps, halos,
- * nodes). Particles go over all of it in their own layer.
+ * The map itself, drawn back to front: zone panels, links, track, set routes, lit alert links and
+ * diode arrows (one draw), trains, then the glyphs that must stay readable on top (signal lamps,
+ * halos, nodes, defenses). The dot grid goes under all of it and the particles over it, each in
+ * its own pass.
  */
 export function drawMap(
   gl: WebGL2RenderingContext,
@@ -19,12 +22,11 @@ export function drawMap(
   frame: Frame,
 ): void {
   blendPremultiplied(gl);
-  drawLines(gl, prims, view.zones, frame);
+  drawPanels(gl, prims, view.panels, frame);
   drawLines(gl, prims, view.links, frame);
   drawLines(gl, prims, view.track, frame);
   drawLines(gl, prims, view.routes, frame);
-  drawLines(gl, prims, view.alerts, frame);
-  drawLines(gl, prims, view.defenseArrows, frame);
+  drawLineGroups(gl, prims, [view.alerts, view.defenseArrows], frame);
   drawLines(gl, prims, view.trains, frame);
   drawDiscs(gl, prims, view.signals, frame);
   drawDiscs(gl, prims, view.halos, frame);

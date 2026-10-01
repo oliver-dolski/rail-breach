@@ -102,7 +102,7 @@ export function buildFallbackSvg(layout: Layout, content: Content): string {
 
   for (const z of layout.zones) {
     add(
-      `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" fill="none" stroke="${cssColor(NEUTRAL.zone)}" stroke-width="1.4" stroke-dasharray="9 7"/>`,
+      `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" fill="none" stroke="${cssColor(NEUTRAL.zoneFill)}" stroke-width="1.4" stroke-dasharray="9 7"/>`,
     );
     add(
       `<text x="${z.x + 8}" y="${z.y + 16}" fill="${cssColor(NEUTRAL.zoneLabel)}" font-family="monospace" font-size="11" letter-spacing="1.5">${esc(z.label)}</text>`,

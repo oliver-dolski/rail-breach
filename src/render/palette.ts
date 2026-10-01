@@ -82,8 +82,14 @@ const grey = (l: number, tint = 0.05): Rgb => hsl(215, tint, l);
 
 export const NEUTRAL = {
   background: [0.027, 0.04, 0.055] as Rgb,
-  zone: grey(0.36),
-  zoneLabel: grey(0.56),
+  /** The pane of a zone: the hue-free base of its translucent fill. */
+  zoneFill: grey(0.36),
+  /** The lit border of a zone panel. */
+  zoneEdge: grey(0.52),
+  /** The dot grid under the zones, which also gives a moving camera something to move against. */
+  ground: grey(0.3),
+  /** The canvas twin of the DOM zone label colour. */
+  zoneLabel: grey(0.6),
   link: grey(0.3),
   track: grey(0.42),
   trackOccupied: grey(0.72, 0.06),

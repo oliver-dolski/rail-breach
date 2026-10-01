@@ -5,7 +5,13 @@ import { TICKS_PER_SECOND } from "../core/sim/constants";
 import { fitMap, viewUniform } from "./geometry";
 import { disposeGL, type GlResources, initGL } from "./gl/context";
 import { runBloom, sizePost } from "./gl/post";
-import { type Frame, HDR_EMISSIVE, NO_EMISSIVE, type Primitives } from "./gl/primitives";
+import {
+  drawGround,
+  type Frame,
+  HDR_EMISSIVE,
+  NO_EMISSIVE,
+  type Primitives,
+} from "./gl/primitives";
 import { bloomSettings, chooseTier, firstWorking, type RenderTier, tiersFrom } from "./gl/tier";
 import { drawMap } from "./layers/map";
 import { drawParticles } from "./layers/particles";
@@ -151,6 +157,14 @@ export class MapRenderer {
     gl.clearColor(r, g, b, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
+    if (view.ground) {
+      drawGround(gl, res.prims, frame, {
+        width: this.width,
+        height: this.height,
+        sheetWidth: this.layout.width,
+        sheetHeight: this.layout.height,
+      });
+    }
     drawMap(gl, res.prims, view, frame);
     this.drawAmbient(gl, res.prims, frame);
     drawParticles(gl, res.prims, ring, frame);

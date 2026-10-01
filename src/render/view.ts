@@ -44,6 +44,47 @@ export interface DiscInstance {
   color: Rgba;
 }
 
+/** One zone panel, in map units: a rounded pane with a lit border and an inner glow. */
+export interface PanelInstance {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  radius: number;
+  border: number;
+  /** Fill colour and its alpha at the top and at the bottom edge. */
+  fill: Rgb;
+  fillTop: number;
+  fillBottom: number;
+  /** Border colour and its alpha on the sides and bottom, and along the top edge. */
+  edge: Rgb;
+  edgeSide: number;
+  edgeTop: number;
+  /** Width of the soft light just inside the border, and its alpha. */
+  innerGlow: number;
+  innerGlowAlpha: number;
+  /** Outer glow radius in the edge colour; 0 for none. */
+  glow: number;
+}
+
+/** The look of a zone panel (UI-SPEC 1.2) and of its state tint. */
+export const ZONE_PANEL = {
+  radius: 6,
+  border: 1.4,
+  fillTop: 0.085,
+  fillBottom: 0.035,
+  edgeSide: 0.55,
+  edgeTop: 0.85,
+  innerGlow: 10,
+  innerGlowAlpha: 0.1,
+  tintEdge: 0.85,
+  tintFill: 0.045,
+  tintGlow: 7,
+} as const;
+
+/** What the intruder has done to a zone: nothing yet, a foothold in it, or control lost in it. */
+export type ZoneState = "quiet" | "breached" | "lost";
+
 /**
  * Which picture of the line is drawn. Ground truth is the railway as it is. The operator
  * view is what the dispatchers' consoles say about it: the same world, read through the
@@ -71,7 +112,10 @@ export interface RenderView {
   tick: number;
   /** Fractional tick: tick plus the interpolation alpha. */
   phase: number;
-  zones: LineInstance[];
+  /** One translucent panel per zone, in layout order. A function of the world only. */
+  panels: PanelInstance[];
+  /** Whether the dot grid is drawn under the panels. */
+  ground: boolean;
   links: LineInstance[];
   track: LineInstance[];
   routes: LineInstance[];
@@ -139,7 +183,10 @@ export interface ViewContext {
   conduitMarks: { id: string; label: string; x: number; y: number; link: string }[];
   /** Every text box on the map a defense glyph must keep off: node labels and conduit captions. */
   labelBoxes: LabelBox[];
-  zones: LineInstance[];
+  /** The layout rectangles of the zones, in layout order. */
+  zoneBoxes: { id: string; x: number; y: number; w: number; h: number }[];
+  /** The zone each machine stands in. */
+  nodeZone: Map<string, string>;
   blocks: Map<string, Polyline>;
   drawBlocks: DrawBlock[];
   connectors: LineInstance[];
@@ -203,17 +250,9 @@ export function createViewContext(content: Content, index: Index, layout: Layout
     });
   }
 
-  const zones: LineInstance[] = [];
-  for (const z of layout.zones) {
-    const corners: Pt[] = [
-      { x: z.x, y: z.y },
-      { x: z.x + z.w, y: z.y },
-      { x: z.x + z.w, y: z.y + z.h },
-      { x: z.x, y: z.y + z.h },
-      { x: z.x, y: z.y },
-    ];
-    zones.push(...segmentsOf(corners, 1.4, 0, 9, rgba(NEUTRAL.zone, 0.9)));
-  }
+  const zoneBoxes = layout.zones.map((z) => ({ id: z.id, x: z.x, y: z.y, w: z.w, h: z.h }));
+  const nodeZone = new Map<string, string>();
+  for (const n of content.nodes) nodeZone.set(n.id, n.zone);
 
   const { graph } = index.rail;
   const drawBlocks: DrawBlock[] = [];
@@ -266,7 +305,8 @@ export function createViewContext(content: Content, index: Index, layout: Layout
       ...Object.values(layout.nodes).map((n) => nodeLabelBox(n.label, n.x, n.y)),
       ...conduitMarks.map(conduitLabelBox),
     ],
-    zones,
+    zoneBoxes,
+    nodeZone,
     blocks,
     drawBlocks,
     connectors,
@@ -484,6 +524,72 @@ export function nodeVisualState(node: NodeState): NodeVisualState {
   if (node.integrity > 0) return "compromised";
   if (node.availability === "degraded" || node.view !== "ok") return "degraded";
   return "normal";
+}
+
+/**
+ * The state of every zone, read from the machines in it: lost when one of them lost control,
+ * else breached when the intruder holds one, else quiet. A function of the world only.
+ */
+export function zoneStates(world: World, ctx: ViewContext): Map<string, ZoneState> {
+  const states = new Map<string, ZoneState>();
+  for (const z of ctx.zoneBoxes) states.set(z.id, "quiet");
+  for (const node of world.nodes) {
+    const zone = ctx.nodeZone.get(node.id);
+    if (zone === undefined) continue;
+    if (nodeVisualState(node) === "lost") states.set(zone, "lost");
+    else if (node.integrity > 0 && states.get(zone) !== "lost") states.set(zone, "breached");
+  }
+  return states;
+}
+
+/** The neutral fill and the tint colour mixed by their alphas, so one fill colour carries both. */
+function mixByAlpha(a: Rgb, alphaA: number, b: Rgb, alphaB: number): Rgb {
+  const total = alphaA + alphaB;
+  return [
+    (a[0] * alphaA + b[0] * alphaB) / total,
+    (a[1] * alphaA + b[1] * alphaB) / total,
+    (a[2] * alphaA + b[2] * alphaB) / total,
+  ];
+}
+
+function zonePanels(world: World, ctx: ViewContext): PanelInstance[] {
+  const states = zoneStates(world, ctx);
+  return ctx.zoneBoxes.map((z) => {
+    const state = states.get(z.id) ?? "quiet";
+    const shape = {
+      x: z.x,
+      y: z.y,
+      w: z.w,
+      h: z.h,
+      radius: ZONE_PANEL.radius,
+      border: ZONE_PANEL.border,
+      innerGlow: ZONE_PANEL.innerGlow,
+      innerGlowAlpha: ZONE_PANEL.innerGlowAlpha,
+    };
+    if (state === "quiet") {
+      return {
+        ...shape,
+        fill: NEUTRAL.zoneFill,
+        fillTop: ZONE_PANEL.fillTop,
+        fillBottom: ZONE_PANEL.fillBottom,
+        edge: NEUTRAL.zoneEdge,
+        edgeSide: ZONE_PANEL.edgeSide,
+        edgeTop: ZONE_PANEL.edgeTop,
+        glow: 0,
+      };
+    }
+    const tint = state === "lost" ? ALERT_COLORS.impact : ALERT_COLORS.attacker;
+    return {
+      ...shape,
+      fill: mixByAlpha(NEUTRAL.zoneFill, ZONE_PANEL.fillTop, tint, ZONE_PANEL.tintFill),
+      fillTop: ZONE_PANEL.fillTop + ZONE_PANEL.tintFill,
+      fillBottom: ZONE_PANEL.fillBottom + ZONE_PANEL.tintFill,
+      edge: tint,
+      edgeSide: ZONE_PANEL.tintEdge,
+      edgeTop: ZONE_PANEL.tintEdge,
+      glow: ZONE_PANEL.tintGlow,
+    };
+  });
 }
 
 const TRAIN_LENGTH_MIN_PX = 16;
@@ -777,7 +883,8 @@ export function buildView(world: World, ctx: ViewContext, opts: ViewOptions = {}
   return {
     tick: world.tick,
     phase,
-    zones: ctx.zones,
+    panels: zonePanels(world, ctx),
+    ground: true,
     links,
     track,
     routes,

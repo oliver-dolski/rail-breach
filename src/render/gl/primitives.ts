@@ -1,8 +1,11 @@
 import * as twgl from "twgl.js";
+import { NEUTRAL } from "../palette";
 import discSource from "../shaders/disc.glsl?raw";
+import groundSource from "../shaders/ground.glsl?raw";
 import lineSource from "../shaders/line.glsl?raw";
+import panelSource from "../shaders/panel.glsl?raw";
 import particleSource from "../shaders/particle.glsl?raw";
-import type { DiscInstance, LineInstance } from "../view";
+import type { DiscInstance, LineInstance, PanelInstance } from "../view";
 import { EMISSIVE_MAX, EMISSIVE_PER_GLOW } from "./tier";
 
 /**
@@ -36,7 +39,11 @@ export const NO_EMISSIVE: readonly [number, number] = [0, 0];
 
 export const LINE_FLOATS = 11;
 export const DISC_FLOATS = 9;
+export const PANEL_FLOATS = 19;
 export const PARTICLE_FLOATS_PER_INSTANCE = 12;
+
+/** Dot grid look (UI-SPEC 1.1): pitch and radius live in ground.glsl, colour and alpha here. */
+const GROUND_ALPHA = 0.22;
 
 interface Attrib {
   location: number;
@@ -145,10 +152,43 @@ export class InstancedPass {
   }
 }
 
+/** A pass that fills the screen from gl_VertexID alone: no vertex buffer, only uniforms. */
+export class FullscreenPass {
+  readonly program: twgl.ProgramInfo;
+  private readonly vao: WebGLVertexArrayObject;
+
+  constructor(gl: WebGL2RenderingContext, source: string) {
+    this.program = compileProgram(gl, source);
+    const vao = gl.createVertexArray();
+    if (!vao) {
+      gl.deleteProgram(this.program.program);
+      throw new Error("could not allocate a vertex array");
+    }
+    this.vao = vao;
+  }
+
+  draw(gl: WebGL2RenderingContext, uniforms: Record<string, unknown>): void {
+    gl.useProgram(this.program.program);
+    twgl.setUniforms(this.program, uniforms);
+    gl.bindVertexArray(this.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+  }
+
+  dispose(gl: WebGL2RenderingContext): void {
+    gl.deleteVertexArray(this.vao);
+    gl.deleteProgram(this.program.program);
+  }
+}
+
 export interface Primitives {
   lines: InstancedPass;
   discs: InstancedPass;
   particles: InstancedPass;
+  /** Translucent zone panels. */
+  panels: InstancedPass;
+  /** The dot grid under the panels. */
+  ground: FullscreenPass;
 }
 
 export function createPrimitives(gl: WebGL2RenderingContext): Primitives {
@@ -168,6 +208,14 @@ export function createPrimitives(gl: WebGL2RenderingContext): Primitives {
       { location: 2, size: 4, offset: 4 },
       { location: 3, size: 4, offset: 8 },
     ]),
+    panels: new InstancedPass(gl, panelSource, PANEL_FLOATS, [
+      { location: 1, size: 4, offset: 0 },
+      { location: 2, size: 4, offset: 4 },
+      { location: 3, size: 4, offset: 8 },
+      { location: 4, size: 4, offset: 12 },
+      { location: 5, size: 3, offset: 16 },
+    ]),
+    ground: new FullscreenPass(gl, groundSource),
   };
 }
 
@@ -175,6 +223,8 @@ export function disposePrimitives(gl: WebGL2RenderingContext, p: Primitives): vo
   p.lines.dispose(gl);
   p.discs.dispose(gl);
   p.particles.dispose(gl);
+  p.panels.dispose(gl);
+  p.ground.dispose(gl);
 }
 
 /** Premultiplied alpha: colours carry their own glow, overlaps cover what is below. */
@@ -189,29 +239,47 @@ export function blendAdditive(gl: WebGL2RenderingContext): void {
   gl.blendFunc(gl.ONE, gl.ONE);
 }
 
+function writeLine(data: Float32Array, o: number, l: LineInstance): void {
+  data[o] = l.x0;
+  data[o + 1] = l.y0;
+  data[o + 2] = l.x1;
+  data[o + 3] = l.y1;
+  data[o + 4] = l.width;
+  data[o + 5] = l.glow;
+  data[o + 6] = l.dash;
+  data[o + 7] = l.color[0];
+  data[o + 8] = l.color[1];
+  data[o + 9] = l.color[2];
+  data[o + 10] = l.color[3];
+}
+
 export function drawLines(
   gl: WebGL2RenderingContext,
   prims: Primitives,
   instances: readonly LineInstance[],
   frame: Frame,
 ): void {
-  const data = prims.lines.buffer(instances.length);
+  drawLineGroups(gl, prims, [instances], frame);
+}
+
+/** Several line lists written one after the other into one buffer and drawn with one call. */
+export function drawLineGroups(
+  gl: WebGL2RenderingContext,
+  prims: Primitives,
+  groups: readonly (readonly LineInstance[])[],
+  frame: Frame,
+): void {
+  let total = 0;
+  for (const g of groups) total += g.length;
+  const data = prims.lines.buffer(total);
   let o = 0;
-  for (const l of instances) {
-    data[o] = l.x0;
-    data[o + 1] = l.y0;
-    data[o + 2] = l.x1;
-    data[o + 3] = l.y1;
-    data[o + 4] = l.width;
-    data[o + 5] = l.glow;
-    data[o + 6] = l.dash;
-    data[o + 7] = l.color[0];
-    data[o + 8] = l.color[1];
-    data[o + 9] = l.color[2];
-    data[o + 10] = l.color[3];
-    o += LINE_FLOATS;
+  for (const g of groups) {
+    for (const l of g) {
+      writeLine(data, o, l);
+      o += LINE_FLOATS;
+    }
   }
-  prims.lines.draw(gl, data, instances.length, {
+  prims.lines.draw(gl, data, total, {
     uView: frame.view,
     uPxPerUnit: frame.pxPerUnit,
     uEmissive: frame.emissive ?? HDR_EMISSIVE,
@@ -242,5 +310,67 @@ export function drawDiscs(
     uView: frame.view,
     uPxPerUnit: frame.pxPerUnit,
     uEmissive: frame.emissive ?? HDR_EMISSIVE,
+  });
+}
+
+export function drawPanels(
+  gl: WebGL2RenderingContext,
+  prims: Primitives,
+  panels: readonly PanelInstance[],
+  frame: Frame,
+): void {
+  const data = prims.panels.buffer(panels.length);
+  let o = 0;
+  for (const p of panels) {
+    data[o] = p.x;
+    data[o + 1] = p.y;
+    data[o + 2] = p.w;
+    data[o + 3] = p.h;
+    data[o + 4] = p.radius;
+    data[o + 5] = p.border;
+    data[o + 6] = p.innerGlow;
+    data[o + 7] = p.glow;
+    data[o + 8] = p.fill[0];
+    data[o + 9] = p.fill[1];
+    data[o + 10] = p.fill[2];
+    data[o + 11] = p.fillTop;
+    data[o + 12] = p.edge[0];
+    data[o + 13] = p.edge[1];
+    data[o + 14] = p.edge[2];
+    data[o + 15] = p.edgeSide;
+    data[o + 16] = p.fillBottom;
+    data[o + 17] = p.edgeTop;
+    data[o + 18] = p.innerGlowAlpha;
+    o += PANEL_FLOATS;
+  }
+  prims.panels.draw(gl, data, panels.length, {
+    uView: frame.view,
+    uPxPerUnit: frame.pxPerUnit,
+    uEmissive: frame.emissive ?? HDR_EMISSIVE,
+  });
+}
+
+/** The render target and the sheet it shows, for mapping a pixel back to map units. */
+export interface GroundSize {
+  width: number;
+  height: number;
+  sheetWidth: number;
+  sheetHeight: number;
+}
+
+export function drawGround(
+  gl: WebGL2RenderingContext,
+  prims: Primitives,
+  frame: Frame,
+  size: GroundSize,
+): void {
+  blendPremultiplied(gl);
+  const [r, g, b] = NEUTRAL.ground;
+  prims.ground.draw(gl, {
+    uView: frame.view,
+    uCanvas: [size.width, size.height],
+    uSheet: [size.sheetWidth, size.sheetHeight],
+    uPxPerUnit: frame.pxPerUnit,
+    uDot: [r, g, b, GROUND_ALPHA],
   });
 }
