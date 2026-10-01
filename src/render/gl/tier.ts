@@ -20,6 +20,9 @@ export const EMISSIVE_MAX = 0.6;
 /** Below this the tone curve is the identity, so ordinary board colours are untouched by it. */
 export const TONE_KNEE = 0.8;
 export const VIGNETTE_DEPTH = 0.28;
+/** Frame deltas the governor weighs, and the median above which it steps a weak GPU down to lite. */
+export const GOVERNOR_WINDOW = 90;
+export const GOVERNOR_LIMIT_MS = 28;
 
 export function emissiveGain(glow: number): number {
   if (!(glow > 0)) return 1;
@@ -178,4 +181,36 @@ export function firstWorking<T>(
     }
   }
   throw last;
+}
+
+/**
+ * Watches the frame deltas and says, once, that this GPU cannot keep up with the bloom chain.
+ * The decision is the median of the last GOVERNOR_WINDOW deltas, so a stall or two does not
+ * count. It is one-way for the page, and switched off (enabled false) in the capture build,
+ * where the tier is part of what the media show. It never touches the simulation.
+ */
+export class FrameGovernor {
+  private readonly deltas = new Float64Array(GOVERNOR_WINDOW);
+  private readonly sorted = new Float64Array(GOVERNOR_WINDOW);
+  private count = 0;
+  private head = 0;
+  private tripped = false;
+
+  constructor(private readonly enabled: boolean) {}
+
+  /** Returns true on the one call that trips it. A delta of 0 or less is no measurement and is skipped. */
+  feed(dtMs: number): boolean {
+    if (!this.enabled || this.tripped || !(dtMs > 0)) return false;
+    this.deltas[this.head] = dtMs;
+    this.head = (this.head + 1) % GOVERNOR_WINDOW;
+    if (this.count < GOVERNOR_WINDOW) this.count++;
+    if (this.count < GOVERNOR_WINDOW) return false;
+    this.sorted.set(this.deltas);
+    this.sorted.sort();
+    const median =
+      ((this.sorted[GOVERNOR_WINDOW / 2 - 1] ?? 0) + (this.sorted[GOVERNOR_WINDOW / 2] ?? 0)) / 2;
+    if (median <= GOVERNOR_LIMIT_MS) return false;
+    this.tripped = true;
+    return true;
+  }
 }

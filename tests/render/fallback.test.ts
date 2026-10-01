@@ -92,6 +92,28 @@ describe("the static still", () => {
     expect(committed).not.toMatch(/<script|onload=|onerror=/i);
   });
 
+  it("draws every zone as a rounded translucent panel with a solid border and no dashes", () => {
+    const rects = committed
+      .split("\n")
+      .filter((line) => line.startsWith("<rect ") && line.includes(' rx="6" '));
+    expect(rects).toHaveLength(layout.zones.length);
+    for (const z of layout.zones) {
+      const own = rects.find((r) =>
+        r.includes(`x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}"`),
+      );
+      expect(own, z.id).toBeDefined();
+      expect(own).toContain('fill="url(#zone-fill)"');
+      expect(own).toContain('stroke-opacity="0.55"');
+      expect(own).toContain('stroke-width="1.4"');
+    }
+    expect(committed).not.toContain("stroke-dasharray");
+    expect(committed).toMatch(/<linearGradient id="zone-fill"[^>]*x2="0" y2="1">/);
+    expect(committed).toContain('stop-opacity="0.085"');
+    expect(committed).toContain('stop-opacity="0.035"');
+    // The top edge is lit more brightly than the sides.
+    expect(committed.match(/stroke-opacity="0.85"/g)?.length).toBe(layout.zones.length);
+  });
+
   it("shows the railway and the machines, not an empty frame", () => {
     for (const station of layout.stations) expect(committed).toContain(station.name);
     for (const zone of layout.zones) expect(committed).toContain(zone.label);

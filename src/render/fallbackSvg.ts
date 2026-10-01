@@ -2,6 +2,7 @@ import type { Layout, Pt } from "../content/layout";
 import type { Content } from "../content/types";
 import { pointAt, polyline } from "./geometry";
 import { ALERT_COLORS, cssColor, NEUTRAL, type Rgb, SIGNAL_COLORS } from "./palette";
+import { ZONE_PANEL } from "./view";
 
 /**
  * Builds the static still that replaces the live map when WebGL2 is missing: the
@@ -93,16 +94,22 @@ export function buildFallbackSvg(layout: Layout, content: Content): string {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img">`,
   );
   add("<title>Rail Breach: schematic dispatcher map of a fictional railway (still image)</title>");
+  // The zone pane: a vertical fade from the top edge to the bottom, the same two alphas as the live map.
+  const pane = cssColor(NEUTRAL.zoneFill);
   add(
-    '<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>',
+    `<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><linearGradient id="zone-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${pane}" stop-opacity="${ZONE_PANEL.fillTop}"/><stop offset="1" stop-color="${pane}" stop-opacity="${ZONE_PANEL.fillBottom}"/></linearGradient></defs>`,
   );
   add(
     `<rect width="${layout.width}" height="${layout.height}" fill="${cssColor(NEUTRAL.background)}"/>`,
   );
 
   for (const z of layout.zones) {
+    const edge = cssColor(NEUTRAL.zoneEdge);
     add(
-      `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" fill="none" stroke="${cssColor(NEUTRAL.zoneFill)}" stroke-width="1.4" stroke-dasharray="9 7"/>`,
+      `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="${ZONE_PANEL.radius}" fill="url(#zone-fill)" stroke="${edge}" stroke-opacity="${ZONE_PANEL.edgeSide}" stroke-width="${ZONE_PANEL.border}"/>`,
+    );
+    add(
+      `<line x1="${z.x + ZONE_PANEL.radius}" y1="${z.y}" x2="${z.x + z.w - ZONE_PANEL.radius}" y2="${z.y}" stroke="${edge}" stroke-opacity="${ZONE_PANEL.edgeTop}" stroke-width="${ZONE_PANEL.border}"/>`,
     );
     add(
       `<text x="${z.x + 8}" y="${z.y + 16}" fill="${cssColor(NEUTRAL.zoneLabel)}" font-family="monospace" font-size="11" letter-spacing="1.5">${esc(z.label)}</text>`,

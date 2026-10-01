@@ -126,6 +126,24 @@ describe("startLoop", () => {
     expect(ticks).toBe(2);
   });
 
+  it("hands the render callback the frame delta: 0 on the first frame and after a resume, clamped like the accumulator", () => {
+    const frames = fakeFrames();
+    const deltas: number[] = [];
+    const loop = startLoop({ advance: () => undefined }, (_alpha, dtMs) => deltas.push(dtMs), {
+      deps: frames.deps,
+    });
+    frames.frame(100); // first frame after start: there is no earlier frame to measure from
+    frames.frame(16);
+    frames.frame(400); // a stalled frame counts as MAX_FRAME_MS, like in the accumulator
+    expect(deltas).toEqual([0, 16, MAX_FRAME_MS]);
+
+    loop.pause();
+    loop.resume();
+    frames.frame(5000);
+    frames.frame(33);
+    expect(deltas.slice(3)).toEqual([0, 33]);
+  });
+
   it("stops scheduling frames once stopped", () => {
     const frames = fakeFrames();
     const loop = startLoop({ advance: () => undefined }, () => undefined, { deps: frames.deps });

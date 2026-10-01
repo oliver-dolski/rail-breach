@@ -4,7 +4,7 @@ import type { Content } from "../content/types";
 import { TICKS_PER_SECOND } from "../core/sim/constants";
 import { fitMap, viewUniform } from "./geometry";
 import { disposeGL, type GlResources, initGL } from "./gl/context";
-import { runBloom, sizePost } from "./gl/post";
+import { disposePost, runBloom, sizePost } from "./gl/post";
 import {
   drawGround,
   type Frame,
@@ -12,7 +12,14 @@ import {
   NO_EMISSIVE,
   type Primitives,
 } from "./gl/primitives";
-import { bloomSettings, chooseTier, firstWorking, type RenderTier, tiersFrom } from "./gl/tier";
+import {
+  bloomSettings,
+  chooseTier,
+  FrameGovernor,
+  firstWorking,
+  type RenderTier,
+  tiersFrom,
+} from "./gl/tier";
 import { drawMap } from "./layers/map";
 import { drawParticles } from "./layers/particles";
 import { NEUTRAL } from "./palette";
@@ -53,7 +60,7 @@ export class MapRenderer {
   private readonly ambientCount: number;
   private reducedMotion: boolean;
   private current: RenderTier;
-  private readonly capture: boolean;
+  private readonly governor: FrameGovernor;
 
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -64,7 +71,8 @@ export class MapRenderer {
     // The list is always built: whether the ambient traffic is drawn follows the preference,
     // which can change while the show runs.
     this.reducedMotion = options.reducedMotion;
-    this.capture = options.capture;
+    // The capture build always runs the tier the GPU offers: nothing steps it down mid-recording.
+    this.governor = new FrameGovernor(!options.capture);
     this.current = chooseTier(gl);
     const list = ambientParticles(content, layout);
     this.ambient = new Float32Array(Math.max(1, list.length) * PARTICLE_FLOATS);
@@ -78,6 +86,21 @@ export class MapRenderer {
   /** Follows the reduced-motion preference: with it on the ambient traffic is left out and the bloom is softer. */
   setReducedMotion(on: boolean): void {
     this.reducedMotion = on;
+  }
+
+  /**
+   * Feeds one frame delta to the governor. When it says the GPU cannot keep up, the bloom chain
+   * is dropped for good (lite) and true is returned so the page can report the new tier.
+   */
+  noteFrame(dtMs: number): boolean {
+    if (this.current === "lite" || !this.governor.feed(dtMs)) return false;
+    this.current = "lite";
+    const res = this.res;
+    if (res) {
+      if (res.post) disposePost(this.gl, res.post);
+      this.res = { prims: res.prims, post: undefined, tier: "lite" };
+    }
+    return true;
   }
 
   /** The tier in use: high, standard or lite. */

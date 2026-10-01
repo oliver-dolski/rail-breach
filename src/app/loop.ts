@@ -69,12 +69,13 @@ export interface LoopHandle {
 
 /**
  * Advances `target` by whole ticks according to elapsed frame time, then calls
- * `render` with the interpolation fraction. Render reads; it never writes the
+ * `render` with the interpolation fraction and the frame delta (0 on the first frame after a
+ * start or a resume, and clamped the way the accumulator clamps it). Render reads; it never writes the
  * world. While paused no ticks run, and resuming does not replay the pause.
  */
 export function startLoop(
   target: LoopTarget,
-  render: (alpha: number) => void,
+  render: (alpha: number, dtMs: number) => void,
   options: LoopOptions = {},
 ): LoopHandle {
   const deps = options.deps ?? browserDeps;
@@ -91,7 +92,7 @@ export function startLoop(
     last = timeMs;
     const { ticks, alpha } = acc.feed(dt, speed);
     if (ticks > 0) target.advance(ticks);
-    render(alpha);
+    render(alpha, Math.min(Math.max(dt, 0), MAX_FRAME_MS));
     if (running) handle = deps.request(frame);
   };
 

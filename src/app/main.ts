@@ -308,7 +308,11 @@ function boot(): void {
     },
   };
 
-  const render = (alpha: number): void => {
+  const render = (alpha: number, dtMs: number): void => {
+    // A GPU that cannot keep up steps down to plain glow, once; the simulation never hears of it.
+    if (renderer?.noteFrame(dtMs)) {
+      document.documentElement.setAttribute("data-render-tier", renderer.tier());
+    }
     const world = session.world();
     if (reportingState(world) === "ok") lastGood = world;
     const prev = session.previous();

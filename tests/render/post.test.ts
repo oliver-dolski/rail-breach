@@ -6,7 +6,10 @@ import {
   EMISSIVE_PER_GLOW,
   emissiveGain,
   type FloatProbe,
+  FrameGovernor,
   firstWorking,
+  GOVERNOR_LIMIT_MS,
+  GOVERNOR_WINDOW,
   TONE_KNEE,
   toneShoulder,
   VIGNETTE_DEPTH,
@@ -177,5 +180,51 @@ describe("falling through the tiers", () => {
         throw new Error(`no ${tier}`);
       }),
     ).toThrow("no lite");
+  });
+});
+
+describe("the frame-time governor", () => {
+  /** Feeds the same delta `count` times and returns the calls that tripped. */
+  function feedAll(governor: FrameGovernor, deltas: readonly number[]): number[] {
+    const tripped: number[] = [];
+    deltas.forEach((dt, i) => {
+      if (governor.feed(dt)) tripped.push(i + 1);
+    });
+    return tripped;
+  }
+
+  it("trips on exactly the call that fills the window with a median of 29 ms", () => {
+    expect(GOVERNOR_WINDOW).toBe(90);
+    expect(GOVERNOR_LIMIT_MS).toBe(28);
+    const governor = new FrameGovernor(true);
+    expect(feedAll(governor, new Array(90).fill(29))).toEqual([90]);
+  });
+
+  it("does not trip at a median of 27 ms", () => {
+    expect(feedAll(new FrameGovernor(true), new Array(400).fill(27))).toEqual([]);
+  });
+
+  it("looks at the median, so a few long frames among fast ones change nothing", () => {
+    const deltas = Array.from({ length: 300 }, (_, i) => (i % 10 === 0 ? 250 : 16));
+    expect(feedAll(new FrameGovernor(true), deltas)).toEqual([]);
+  });
+
+  it("never trips with fewer than 90 deltas", () => {
+    expect(feedAll(new FrameGovernor(true), new Array(89).fill(100))).toEqual([]);
+  });
+
+  it("stays tripped and reports the switch only once", () => {
+    const governor = new FrameGovernor(true);
+    expect(feedAll(governor, new Array(300).fill(40))).toEqual([90]);
+  });
+
+  it("is switched off in the capture build: whatever it is fed, it never trips", () => {
+    expect(feedAll(new FrameGovernor(false), new Array(500).fill(500))).toEqual([]);
+  });
+
+  it("does not count a frame with no delta (the first one, or the first after a resume)", () => {
+    const governor = new FrameGovernor(true);
+    expect(feedAll(governor, [0, ...new Array(89).fill(29)])).toEqual([]);
+    expect(governor.feed(29)).toBe(true);
   });
 });
