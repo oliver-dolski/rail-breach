@@ -3,6 +3,7 @@ import discSource from "../shaders/disc.glsl?raw";
 import lineSource from "../shaders/line.glsl?raw";
 import particleSource from "../shaders/particle.glsl?raw";
 import type { DiscInstance, LineInstance } from "../view";
+import { EMISSIVE_MAX, EMISSIVE_PER_GLOW } from "./tier";
 
 /**
  * Instanced quads for everything the map draws. Lines are quads whose width and
@@ -21,7 +22,17 @@ export interface Frame {
   pxPerUnit: number;
   /** Simulation time in seconds, for particles. */
   simTime: number;
+  /**
+   * Emissive gain per glow radius unit and its cap. Left out, glowing cores are driven above
+   * white for the bloom pass; a tier that draws into an 8-bit target passes NO_EMISSIVE.
+   */
+  emissive?: readonly [number, number];
 }
+
+/** The emissive gain of the HDR pipeline: one source, shared by lines and discs. */
+export const HDR_EMISSIVE: readonly [number, number] = [EMISSIVE_PER_GLOW, EMISSIVE_MAX];
+/** No gain: the colour a primitive carries is the colour it shows. */
+export const NO_EMISSIVE: readonly [number, number] = [0, 0];
 
 export const LINE_FLOATS = 11;
 export const DISC_FLOATS = 9;
@@ -203,6 +214,7 @@ export function drawLines(
   prims.lines.draw(gl, data, instances.length, {
     uView: frame.view,
     uPxPerUnit: frame.pxPerUnit,
+    uEmissive: frame.emissive ?? HDR_EMISSIVE,
   });
 }
 
@@ -229,5 +241,6 @@ export function drawDiscs(
   prims.discs.draw(gl, data, instances.length, {
     uView: frame.view,
     uPxPerUnit: frame.pxPerUnit,
+    uEmissive: frame.emissive ?? HDR_EMISSIVE,
   });
 }

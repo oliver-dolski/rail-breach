@@ -1,5 +1,6 @@
-import { createPost, type Post } from "./post";
-import { createPrimitives, type Primitives } from "./primitives";
+import { createPost, disposePost, type Post } from "./post";
+import { createPrimitives, disposePrimitives, type Primitives } from "./primitives";
+import type { RenderTier } from "./tier";
 
 /** Device pixel ratio is capped: above 2 the extra pixels cost more than they show. */
 export const MAX_DPR = 2;
@@ -43,14 +44,32 @@ export function detectWebgl2(canvas: ContextSource): Webgl2Result {
 
 export interface GlResources {
   prims: Primitives;
-  post: Post;
+  /** The bloom chain; absent on the lite tier, which draws straight to the canvas. */
+  post: Post | undefined;
+  tier: RenderTier;
 }
 
-/** Creates every GL resource. Called at start and again after a lost context is restored. */
-export function initGL(gl: WebGL2RenderingContext): GlResources {
+/**
+ * Creates every GL resource for a tier. Called at start and again after a lost context is
+ * restored. A failure frees what was made and throws, so the caller can try the next tier.
+ */
+export function initGL(gl: WebGL2RenderingContext, tier: RenderTier): GlResources {
   gl.disable(gl.DEPTH_TEST);
   gl.disable(gl.CULL_FACE);
-  return { prims: createPrimitives(gl), post: createPost(gl) };
+  const prims = createPrimitives(gl);
+  if (tier === "lite") return { prims, post: undefined, tier };
+  try {
+    return { prims, post: createPost(gl, tier), tier };
+  } catch (error) {
+    disposePrimitives(gl, prims);
+    throw error;
+  }
+}
+
+/** Frees everything initGL made. */
+export function disposeGL(gl: WebGL2RenderingContext, res: GlResources): void {
+  disposePrimitives(gl, res.prims);
+  if (res.post) disposePost(gl, res.post);
 }
 
 export interface CanvasSize {

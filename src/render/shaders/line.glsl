@@ -35,6 +35,7 @@ in vec2 v_local;
 in vec4 v_color;
 in vec4 v_params;
 uniform float uPxPerUnit;
+uniform vec2 uEmissive;  // gain per glow radius unit, gain cap
 out vec4 o_color;
 
 void main() {
@@ -55,8 +56,10 @@ void main() {
     float e = max(d - halfW, 0.0) / glowR;
     glow = 0.55 * exp(-1.4 * e * e);
   }
+  // A glowing primitive emits its core brighter than white; the bloom pass picks that up.
+  float gain = glowR > 0.0 ? 1.0 + min(uEmissive.x * glowR, uEmissive.y) : 1.0;
   float cov = clamp(core + glow * 0.5, 0.0, 1.0) * v_color.a;
-  vec3 rgb = v_color.rgb * (core + glow) * v_color.a;
+  vec3 rgb = v_color.rgb * (core * gain + glow) * v_color.a;
   o_color = vec4(rgb, cov);
 }
 #endif

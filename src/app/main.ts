@@ -153,9 +153,16 @@ function boot(): void {
     // Some drivers hand out a WebGL2 context and then refuse a shader.
     const gl = detection.gl;
     renderer = attempt(
-      () => new MapRenderer(gl, layout, network, { reducedMotion }),
+      () =>
+        new MapRenderer(gl, layout, network, {
+          reducedMotion,
+          capture: import.meta.env.MODE === "capture",
+        }),
       (reason) => showFallback(fallbackEls, reason, RENDER_FAILED_MESSAGE),
     );
+    // The tier is a fact about this GPU; the smoke script reads it from here. setAttribute, not
+    // dataset: the production bundle must not hold the capture build's dataset pattern.
+    if (renderer) document.documentElement.setAttribute("data-render-tier", renderer.tier());
   } else {
     showFallback(fallbackEls, detection.reason ?? "WebGL2 is unavailable");
   }

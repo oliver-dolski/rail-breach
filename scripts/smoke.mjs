@@ -39,6 +39,7 @@ const PAGE_FACTS = `(() => {
     indicator: text("indicator-label"),
     mapSize: map ? [map.clientWidth, map.clientHeight] : [0, 0],
     fallbackHidden: fallback ? fallback.hidden : null,
+    tier: document.documentElement.dataset.renderTier ?? "",
     csp: window.__csp,
     pageErrors: window.__errors,
     session: sessionStorage.length,
@@ -200,6 +201,11 @@ async function run(target) {
         refsOk,
         refs.map((r) => `${r.status} ${r.kind} ${r.url}`),
       ],
+      [
+        "11 render tier reported",
+        facts.fallbackHidden === true && ["high", "standard", "lite"].includes(facts.tier),
+        [`tier ${facts.tier || "none"}`],
+      ],
     ];
 
     let failures = 0;
@@ -235,7 +241,7 @@ async function run(target) {
       )}\n`,
     );
     console.log(
-      `${failures === 0 ? "smoke ok" : `smoke FAILED (${failures})`}: ${net.requested.length} requests, clock ${facts.clock}, signals ${facts.signals}`,
+      `${failures === 0 ? "smoke ok" : `smoke FAILED (${failures})`}: ${net.requested.length} requests, clock ${facts.clock}, signals ${facts.signals}, tier ${facts.tier}`,
     );
     return failures === 0 ? 0 : 1;
   } finally {
