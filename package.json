@@ -18,6 +18,7 @@
     "lint": "biome check .",
     "lint:core": "node scripts/check-core-determinism.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "media:capture": "node scripts/capture.mjs",
     "scan:history": "node scripts/scan-history.mjs",
     "recordings:regen": "node scripts/regen-recordings.mjs",
     "fallback:regen": "node scripts/make-fallback.mjs",

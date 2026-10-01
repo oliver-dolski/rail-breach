@@ -33,6 +33,7 @@ import { createRefreshGate } from "../ui/panel/refresh";
 import { createScenarioSelect } from "../ui/panel/scenario";
 import { createTimelineView, Timeline } from "../ui/panel/timeline";
 import { createViewToggle } from "../ui/panel/viewmode";
+import { CAPTURE_FRAME_MS, createManualFrames, installCaptureHook } from "./capture";
 import { catalog, entryFor } from "./catalog";
 import { compareSession, defenseCount } from "./compare";
 import { keystore } from "./keystore";
@@ -330,7 +331,15 @@ function boot(): void {
     }
   };
 
-  loop = startLoop(target, render);
+  if (import.meta.env.MODE === "capture") {
+    // Only the capture build gets here: the media script steps the frames, 40 ms each, and the
+    // simulation, the recording and the render are exactly the ones the page ships.
+    const manual = createManualFrames(CAPTURE_FRAME_MS);
+    loop = startLoop(target, render, { deps: manual.deps });
+    installCaptureHook(manual);
+  } else {
+    loop = startLoop(target, render);
+  }
 }
 
 try {

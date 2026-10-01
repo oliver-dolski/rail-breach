@@ -685,6 +685,22 @@ button.plain:disabled {
   }
 }
 
+/*
+ * Capture build only: no motion may run on the wall clock, because each frame is made on a clock
+ * the script steps. The one animation the page has is named with enough specificity to win over
+ * its own rule; the rest of the page gets no transition, animation or caret.
+ */
+:root[data-capture] .chain span.tone-running {
+  animation: none;
+}
+
+:root[data-capture] * {
+  animation: none;
+  transition: none;
+  caret-color: transparent;
+  scroll-behavior: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chain span.tone-running {
     animation: none;
