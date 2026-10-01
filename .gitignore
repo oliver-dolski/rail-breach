@@ -16,3 +16,6 @@ scratch/
 
 # Pinned third-party source bundles fetched by scripts (never committed)
 vendor/
+
+# Post drafts and their assets: local notes, not part of the tool.
+_linkedin/
