@@ -21,6 +21,8 @@
     "media:capture": "node scripts/capture.mjs",
     "scan:history": "node scripts/scan-history.mjs",
     "recordings:regen": "node scripts/regen-recordings.mjs",
+    "readme:techniques": "node scripts/readme-techniques.mjs",
+    "check:links": "node scripts/check-links.mjs README.md",
     "fallback:regen": "node scripts/make-fallback.mjs",
     "prepare": "git config core.hooksPath .githooks || echo hooks not installed: not a git checkout"
   },

@@ -1,5 +1,13 @@
 /// <reference types="node" />
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -34,8 +42,18 @@ interface Finding {
   why: string;
 }
 
-/** Files whose text the gate reads: the source tree minus the catalogue itself. */
+/**
+ * attack.mitre.org writes a sub-technique as .../techniques/T1692/001/. The gate reads that
+ * path as the dotted ID it stands for, so a link to a revoked or unknown page is caught too.
+ */
+const dotted = (text: string): string => text.replace(/\b(T\d{4})\/(\d{3})\b/g, "$1.$2");
+
+/**
+ * Files whose text the gate reads: the source tree minus the catalogue itself. A root that
+ * is a file (README.md) is read as it is, whatever its extension.
+ */
 function sourceFiles(dir: string): string[] {
+  if (statSync(dir).isFile()) return [dir];
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -58,7 +76,7 @@ function checkIds(
   const findings: Finding[] = [];
   for (const root of roots) {
     for (const file of sourceFiles(root)) {
-      const text = readFileSync(file, "utf8");
+      const text = dotted(readFileSync(file, "utf8"));
       for (const id of new Set(text.match(ID_TOKEN) ?? [])) {
         const entry = byId.get(id);
         const where = relative(base, file).replaceAll("\\", "/");
@@ -94,6 +112,15 @@ describe("ATK-06: technique IDs in the code exist and are not revoked", () => {
   it("holds for the committed source tree", () => {
     const findings = checkIds([join(ROOT, "src")], attackCatalog.techniques, ROOT);
     expect(describeFindings(findings)).toBe("");
+  });
+
+  it("holds for README.md, including the IDs inside its attack.mitre.org links", () => {
+    const readme = join(ROOT, "README.md");
+    expect(describeFindings(checkIds([readme], attackCatalog.techniques, ROOT))).toBe("");
+    const seen = dotted(readFileSync(readme, "utf8")).match(ID_TOKEN) ?? [];
+    for (const id of ["T0865", "T1692.001", "T0855", "T1691.001"]) {
+      expect(seen, id).toContain(id);
+    }
   });
 
   it("actually reads technique IDs out of the tree (the scan is not vacuous)", () => {
@@ -151,6 +178,22 @@ describe("ATK-06: technique IDs in the code exist and are not revoked", () => {
         'const old = ["T0855", "T0803", "T0856"]; const now = ["T1692.001", "T1691.001", "T1692.002"];\n',
     });
     expect(checkIds([dir], attackCatalog.techniques, scratch)).toEqual([]);
+  });
+
+  it("reads a single file as a root and the page path of a sub-technique as its dotted ID", () => {
+    const dir = tree("readme", {
+      "README.md": [
+        "[ok](https://attack.mitre.org/techniques/T1692/001/) [alias](T0855)",
+        "[bad](https://attack.mitre.org/techniques/T1692/009/)",
+        "[gone](https://attack.mitre.org/techniques/T0001/)",
+        "",
+      ].join("\n"),
+    });
+    const found = checkIds([join(dir, "README.md")], attackCatalog.techniques, scratch);
+    expect(found.map((f) => `${f.file} ${f.id}`).sort()).toEqual([
+      "readme/README.md T0001",
+      "readme/README.md T1692.009",
+    ]);
   });
 
   it("matches exactly: a parent technique or a malformed sub-ID is not a listed technique", () => {
