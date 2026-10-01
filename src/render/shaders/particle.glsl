@@ -41,6 +41,9 @@ void main() {
   float core = exp(-d * d * 1.6);
   float halo = 0.35 * exp(-d * d * 0.25);
   float a = (core + halo) * v_color.a;
-  o_color = vec4(v_color.rgb * a, a);
+  // Alpha 0 with the (ONE, ONE_MINUS_SRC_ALPHA) blend is the same sum as an additive blend, and it
+  // is the form that adds up the same way on every run when the target is half-float: a plain
+  // (ONE, ONE) blend into RGBA16F gave a different last bit from one session to the next.
+  o_color = vec4(v_color.rgb * a, 0.0);
 }
 #endif

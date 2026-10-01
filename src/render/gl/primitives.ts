@@ -233,10 +233,14 @@ export function blendPremultiplied(gl: WebGL2RenderingContext): void {
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 }
 
-/** Additive: particles only ever add light. */
+/**
+ * Additive: particles only ever add light. Their shader writes alpha 0, so this blend is the sum
+ * of colours. It is spelled this way and not as (ONE, ONE) because a half-float target adds the
+ * latter up differently from one run to the next on some drivers, which breaks the capture.
+ */
 export function blendAdditive(gl: WebGL2RenderingContext): void {
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 }
 
 function writeLine(data: Float32Array, o: number, l: LineInstance): void {

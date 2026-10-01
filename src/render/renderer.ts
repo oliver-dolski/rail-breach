@@ -6,6 +6,7 @@ import { fitMap, viewUniform } from "./geometry";
 import { disposeGL, type GlResources, initGL } from "./gl/context";
 import { disposePost, runBloom, sizePost } from "./gl/post";
 import {
+  blendAdditive,
   drawGround,
   type Frame,
   HDR_EMISSIVE,
@@ -197,8 +198,7 @@ export class MapRenderer {
 
   private drawAmbient(gl: WebGL2RenderingContext, prims: Primitives, frame: Frame): void {
     if (this.reducedMotion || this.ambientCount === 0) return;
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE);
+    blendAdditive(gl);
     prims.particles.draw(gl, this.ambient, this.ambientCount, {
       uView: frame.view,
       uSimTime: frame.simTime,

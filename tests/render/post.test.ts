@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { blendAdditive } from "../../src/render/gl/primitives";
 import {
   bloomSettings,
   chooseTier,
@@ -226,5 +228,24 @@ describe("the frame-time governor", () => {
     const governor = new FrameGovernor(true);
     expect(feedAll(governor, [0, ...new Array(89).fill(29)])).toEqual([]);
     expect(governor.feed(29)).toBe(true);
+  });
+});
+
+describe("particle blending into the half-float scene", () => {
+  it("adds light as (ONE, ONE_MINUS_SRC_ALPHA) with alpha 0, never as (ONE, ONE)", () => {
+    // A plain (ONE, ONE) blend into RGBA16F added up differently from one session to the next
+    // on this driver (measured on the capture host), which broke the byte-identical capture.
+    const calls: number[][] = [];
+    const gl = {
+      ONE: 1,
+      ONE_MINUS_SRC_ALPHA: 771,
+      BLEND: 3042,
+      enable: () => undefined,
+      blendFunc: (...args: number[]) => calls.push(args),
+    } as unknown as WebGL2RenderingContext;
+    blendAdditive(gl);
+    expect(calls).toEqual([[1, 771]]);
+    const shader = readFileSync("src/render/shaders/particle.glsl", "utf8");
+    expect(shader).toContain("o_color = vec4(v_color.rgb * a, 0.0);");
   });
 });
