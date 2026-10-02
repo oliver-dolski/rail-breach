@@ -5,13 +5,21 @@
      the middle row take what is left, and the picture box therefore always has an integer size,
      which the script reads, crops and scales the still to exactly (so the browser never rescales
      it). Same series style as the other cards: dark ground, narrow stripe at the left, big sans
-     title, mono lines, pills, repo address at the bottom right. System fonts, no script, no
-     external resource. -->
+     title, mono lines, pills, repo address at the bottom right. The title is set in Space Grotesk
+     from a copy of the page's own woff2 that the script puts next to this file; the other text
+     uses system fonts. No script, no external resource. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>rail-breach</title>
 <style>
+  @font-face {
+    font-family: "Space Grotesk";
+    src: url("space-grotesk-latin-wght-normal.woff2") format("woff2");
+    font-weight: 300 700;
+    font-style: normal;
+    font-display: block;
+  }
   :root {
     --ground: #0d1117;
     --stripe: #f5b316;
@@ -21,7 +29,7 @@
     --link: #58a6ff;
   }
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--ground); overflow: hidden; }
-  .sans { font-family: "Segoe UI", system-ui, sans-serif; }
+  .sans { font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif; }
   .mono { font-family: "Cascadia Code", Consolas, ui-monospace, monospace; }
   .card {
     position: relative;
@@ -43,7 +51,7 @@
     height: 124px;
     font-size: 124px;
     line-height: 124px;
-    font-weight: 800;
+    font-weight: 600;
     letter-spacing: -2px;
     color: var(--title);
   }
@@ -95,7 +103,7 @@
     <p>Signals fall to stop, trains stand, the interlocking fails safe.</p>
     <p>Deterministic, keyless, in the browser.</p>
   </section>
-  <figure class="shot"><img id="still" src="still-attack.png" alt="The rail-breach dispatcher map at 00:20: the chain has landed, every signal is at stop, an IDS alert has fired."></figure>
+  <figure class="shot"><img id="still" src="still-attack.png" alt="The rail-breach dispatcher map at 00:34: the whole attack chain is lit, every signal is at stop, trains stand."></figure>
   <ul class="pills mono">
     <li>ATT&amp;CK for ICS v19.2</li>
     <li>WebGL2</li>

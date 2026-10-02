@@ -3,8 +3,9 @@
 // Usage: node scripts/capture.mjs [--frames N] [--verify-determinism] [--reuse-frames] [--cards-only]
 //        (npm run media:capture)
 //
-// A plain run makes the whole set: the 1080p video, the README teaser GIF, the two stills, the
-// LinkedIn card and the GitHub social preview (the card template is scripts/capture/card.html).
+// A plain run makes the whole set: the 1080p video, the README teaser GIF, the three stills (the
+// intro, 00:20 and 00:34), the LinkedIn card and the GitHub social preview (the card template is
+// scripts/capture/card.html), and then runs the stills gates of scripts/check-stills.mjs.
 // --frames N captures only N frames and makes just a clip (a quick check of the pipeline).
 // --reuse-frames skips the capture and encodes again from scratch/capture/frames, which is how
 // the GIF settings below were tuned without playing the session each time. --cards-only draws just
@@ -24,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "vite";
 import { launchBrowser } from "./browser/cdp.mjs";
+import { checkStills } from "./check-stills.mjs";
 import { createPagesServer, listen } from "./serve-dist.mjs";
 
 const run = promisify(execFile);
@@ -53,40 +55,62 @@ const VIEWPORT = { width: 1280, height: 720 };
 const DPR = 1.5;
 /** The browser window is larger than the viewport so the emulated size always fits on screen. */
 const WINDOW = { width: 1700, height: 1100 };
-/** The master capture runs this many seconds of session clock: the chain lands at about 18 s, the first train halts at about 32 s. */
+/**
+ * The master capture runs the intro (introFrames frames, read from the page) and then this many
+ * seconds of session clock: the chain lands at about 18 s, the first train halts at about 32 s.
+ * The session clock starts when the intro ends.
+ */
 const CAPTURE_SECONDS = 46;
 /** H.264 settings for the video: a visually lossless crf at a slow preset. */
 const X264 = ["-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p"];
 /** Container flags that keep paths, versions and timestamps out of the files and make them repeatable. */
 const REPRODUCIBLE = ["-map_metadata", "-1", "-fflags", "+bitexact", "-flags:v", "+bitexact"];
 
-// The README teaser. The window starts a few seconds before the chain lands and ends after the
-// first train has stopped, so the attack, the signals going to stop and a train standing are all in.
-/** Session clock, in seconds, of the first frame of the teaser. */
-const GIF_START_S = 6;
-/** Session clock, in seconds, where the teaser ends (the first train halts at about 32 s). */
-const GIF_END_S = 38;
-/** Every K-th captured frame is kept: 4 is a GIF frame every 160 ms of session time. */
-const GIF_STEP = 4;
-/** The GIF is scaled to this width; 960 is the largest the plan allows and fits the README column. */
-const GIF_WIDTH = 960;
-/** Display time of each GIF frame in centiseconds (8 is 12.5 frames a second). */
-const GIF_DELAY_CS = 8;
+// The README teaser. It opens on the first frame of the intro and runs on until the last frame
+// that shows the panel clock at the second of the first halt, so the fold, the attack, the signals
+// going to stop and a train standing are all in.
+/** Index of the first frame of the teaser: the first frame of the capture, which is the intro. */
+const GIF_START_FRAME = 0;
+/** The panel clock the teaser ends on: the held overview of the first halt. */
+const GIF_END_CLOCK = "00:34";
+// The intro folds and the camera drifts, so nearly every pixel of every frame changes and a GIF
+// of the whole window is heavy: at step 4, 960 px and 256 colours it came to 16.6 MiB against the
+// 5 MiB cap. The plan's levers in order (step 5, width 880, 128 then 64 colours, step 8) still left
+// 5.55 MiB, so the width went below 880 and the ordered dither was dropped as well (the dither
+// noise is what the compressor cannot shrink). Sizes of the 975 frame window (MiB):
+// step 4/960/256 16.6, 5/880/256 12.0, 5/880/64 8.2, 8/880/64 5.55, 6/720/64 with dither 5.14,
+// 6/720/64 without 4.80. The last is the one used.
+/** Every K-th captured frame is kept: 6 is a GIF frame every 240 ms of session time. */
+const GIF_STEP = 6;
+/** The GIF is scaled to this width (the cap is GIF_MAX_WIDTH). */
+const GIF_WIDTH = 720;
+/** Display time of each GIF frame in centiseconds; with GIF_STEP it fixes the speed (12 is 8.33 frames a second). */
+const GIF_DELAY_CS = 12;
+/** Palette size of the GIF. */
+const GIF_COLORS = 64;
 /** How much faster than real time the teaser plays; the README quotes this value. */
 const GIF_SPEED = (GIF_STEP * FRAME_MS) / (GIF_DELAY_CS * 10);
-/** Palette dither: a fixed ordered pattern, so the file is the same on every run and flat areas do not crawl. */
-const GIF_DITHER = "bayer:bayer_scale=5:diff_mode=rectangle";
+/** No palette dither: the glow gradients band a little, and the file is a third of the size of a dithered one. */
+const GIF_DITHER = "none:diff_mode=rectangle";
 /** The README teaser may weigh at most this much (it stays in history for good). */
 const GIF_MAX_BYTES = 5 * 1024 * 1024;
 /** The README teaser may be at most this wide. */
 const GIF_MAX_WIDTH = 960;
-/** The two stills: the attack has landed, and a train stands. Both are named by their clock reading. */
+/**
+ * The two clock stills: the attack has landed, and a train stands. Both are named by their clock
+ * reading. Each is also shot again with the map labels hidden, and its label boxes written down,
+ * for the label legibility gate (G3 in scripts/check-stills.mjs).
+ */
 const STILLS = [
   { name: "still-attack.png", clock: "00:20" },
   { name: "still-halt.png", clock: "00:34" },
 ];
-/** The still the cards show as their picture: the chain has landed and every signal is at stop. */
-const CARD_STILL = "still-attack.png";
+/** The still of the intro, half way through it: the levels mid-fall. Located by frame, not by clock. */
+const INTRO_STILL = "still-intro.png";
+/** The still the cards show as their picture: the whole board with the full trail and every signal at stop. */
+const CARD_STILL = "still-halt.png";
+/** The display face, copied next to the card template so the card title uses the same file as the page. */
+const CARD_FONT = "space-grotesk-latin-wght-normal.woff2";
 /**
  * Time a card page is left alone after it has loaded before it is photographed. A session that
  * is shot sooner sometimes keeps a coarser downscale of the still for good (both states are
@@ -152,20 +176,54 @@ document.addEventListener("securitypolicyviolation", (e) => {
   window.__csp.push(e.violatedDirective + " " + e.blockedURI);
 });
 window.addEventListener("error", (e) => window.__errors.push(String(e.message)));
+window.__visibility = [];
+document.addEventListener("visibilitychange", () => {
+  window.__visibility.push(document.visibilityState + " at " + new Date().toISOString());
+});
 `;
+
+const TWO_FRAMES =
+  "new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))";
+
+/**
+ * The extra shot of a clock still: the same page with the map labels hidden, and where the labels,
+ * the map canvas and the pixel ratio were. It happens right after the still's normal screenshot,
+ * at the same frame in every session, and the labels are shown again and given two real frames
+ * before the next step, so the frames that follow are not touched.
+ * Returns { png, info }.
+ */
+async function labelsHiddenShot(browser) {
+  const info = await browser.evaluate(`(() => {
+    const box = (el) => {
+      const b = el.getBoundingClientRect();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    };
+    return {
+      dpr: window.devicePixelRatio,
+      canvas: box(document.getElementById("map")),
+      boxes: [...document.querySelectorAll("#labels .lbl")].map(box).filter((b) => b.w > 0 && b.h > 0),
+    };
+  })()`);
+  await browser.evaluate(`document.getElementById("labels").style.visibility = "hidden"`);
+  await browser.evaluate(TWO_FRAMES);
+  const png = await browser.screenshot({ fromSurface: true });
+  await browser.evaluate(`document.getElementById("labels").style.removeProperty("visibility")`);
+  await browser.evaluate(TWO_FRAMES);
+  return { png, info };
+}
 
 /**
  * Plays the session in a fresh browser profile and screenshots every frame. With `write`, each
  * frame goes to FRAMES_DIR; with `expected`, each frame is only hashed and compared.
- * Returns one { i, clock, sha } per frame.
+ * Returns { introFrames, frames }, one { i, clock, sha } per frame; the frame that first shows
+ * a still's clock also carries `shaNoLabels`, the hash of its labels-hidden shot.
  */
-async function captureFrames({ origin, count, write, expected }) {
+async function captureFrames({ origin, count: wanted, write, expected }) {
   const browser = await launchBrowser(WINDOW);
   try {
     for (const domain of ["Network", "Runtime", "Log", "Page"]) {
       await browser.send(`${domain}.enable`);
     }
-    await browser.send("Page.bringToFront");
     await browser.send("Emulation.setDeviceMetricsOverride", {
       ...VIEWPORT,
       deviceScaleFactor: DPR,
@@ -187,13 +245,18 @@ async function captureFrames({ origin, count, write, expected }) {
       await sleep(100);
     }
     await browser.evaluate("window.__railBreachCapture.ready");
+    const introFrames = await browser.evaluate("window.__railBreachCapture.introFrames");
+    if (!Number.isInteger(introFrames) || introFrames < 1) {
+      throw new Error(`the capture hook reports ${introFrames} intro frames`);
+    }
+    // A full capture is the intro plus CAPTURE_SECONDS of session clock; --frames N overrides it.
+    const count = wanted ?? introFrames + CAPTURE_SECONDS * FPS + 1;
     // Two real animation frames, so the first layout, the canvas size and the labels have settled.
-    await browser.evaluate(
-      "new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))",
-    );
+    await browser.evaluate(TWO_FRAMES);
 
     const frames = [];
     const differing = [];
+    const stillsTaken = new Set();
     for (let i = 0; i < count; i++) {
       const clock = await browser.evaluate(
         `(async () => {
@@ -211,7 +274,24 @@ async function captureFrames({ origin, count, write, expected }) {
         differing.push(`frame ${i} (clock ${clock})`);
       }
       if (write) await writeFile(join(FRAMES_DIR, `${pad(i)}.png`), png);
-      frames.push({ i, clock, sha });
+      const entry = { i, clock, sha };
+      const still = STILLS.find((candidate) => candidate.clock === clock);
+      if (still && !stillsTaken.has(clock)) {
+        stillsTaken.add(clock);
+        const hidden = await labelsHiddenShot(browser);
+        entry.shaNoLabels = sha256(hidden.png);
+        if (expected && expected[i]?.shaNoLabels !== entry.shaNoLabels) {
+          await writeFile(join(WORK, `differs-nolabels-${pad(i)}.png`), hidden.png);
+          differing.push(`labels-hidden shot of frame ${i} (clock ${clock})`);
+        }
+        if (write) {
+          const stem = still.name.replace(/\.png$/, "");
+          await writeFile(join(WORK, `nolabels-${stem}.png`), hidden.png);
+          const boxes = JSON.stringify(hidden.info, null, 1);
+          await writeFile(join(WORK, `labels-${stem}.json`), `${boxes}\n`);
+        }
+      }
+      frames.push(entry);
     }
 
     if (differing.length > 0) {
@@ -248,7 +328,25 @@ async function captureFrames({ origin, count, write, expected }) {
     const foreign = [...requested].filter((url) => new URL(url).origin !== origin);
     if (foreign.length > 0) throw new Error(`requests left the origin: ${foreign.join(", ")}`);
     if (broken.length > 0) throw new Error(`requests failed: ${broken.join(", ")}`);
-    return frames;
+    return { introFrames, frames };
+  } catch (error) {
+    // A page that stops answering has usually been hidden by the desktop (another window over
+    // the browser's), so say what it reports; the frame loop cannot go on without animation frames.
+    const seen = await browser
+      .send(
+        "Runtime.evaluate",
+        {
+          expression: "document.visibilityState + ' ' + JSON.stringify(window.__visibility)",
+          returnByValue: true,
+        },
+        5_000,
+      )
+      .then(
+        (reply) => reply.result.value,
+        () => "unreachable",
+      );
+    error.message += ` (the page reports visibility: ${seen}; now ${new Date().toISOString()})`;
+    throw error;
   } finally {
     await browser.close();
   }
@@ -290,22 +388,27 @@ async function encodeVideo(file, count) {
  * is built from all the frames at once (only the pixels that change count, so the moving signals
  * and particles get colours), then every frame is mapped onto that palette.
  */
-async function encodeGif(file) {
+async function encodeGif(file, firstFrame, frameCount) {
   await mkdir(dirname(file), { recursive: true });
   const palette = join(WORK, "palette.png");
   const input = [
     "-start_number",
-    String(GIF_START_S * FPS),
+    String(firstFrame),
     "-framerate",
     String(FPS),
     "-t",
-    String(GIF_END_S - GIF_START_S),
+    String(frameCount / FPS),
     "-i",
     join(FRAMES_DIR, "%06d.png"),
   ];
   // select keeps frames 0, K, 2K and so on; setpts then spaces the kept frames at the playback rate.
   const pick = `select=not(mod(n\\,${GIF_STEP})),setpts=N/(${100 / GIF_DELAY_CS}*TB),scale=${GIF_WIDTH}:-1:flags=lanczos`;
-  await ffmpeg([...input, "-vf", `${pick},palettegen=stats_mode=diff`, palette]);
+  await ffmpeg([
+    ...input,
+    "-vf",
+    `${pick},palettegen=stats_mode=diff:max_colors=${GIF_COLORS}`,
+    palette,
+  ]);
   await ffmpeg([
     ...input,
     "-i",
@@ -398,7 +501,7 @@ async function checkGif(file) {
     failures.push(`teaser is ${info.width} px wide, over ${GIF_MAX_WIDTH}`);
   }
   console.log(
-    `teaser: ${info.nb_read_frames} frames at ${100 / GIF_DELAY_CS} fps, ${GIF_SPEED}x real speed, ${info.duration.toFixed(2)} s`,
+    `teaser: ${info.nb_read_frames} frames at ${(100 / GIF_DELAY_CS).toFixed(2)} fps, ${GIF_SPEED}x real speed, ${info.duration.toFixed(2)} s`,
   );
   return failures;
 }
@@ -451,6 +554,7 @@ async function renderCards() {
   await mkdir(site, { recursive: true });
   await copyFile(join(ROOT, "scripts", "capture", "card.html"), join(site, "card.html"));
   await copyFile(join(WORK, CARD_STILL), join(site, CARD_STILL));
+  await copyFile(join(ROOT, "src", "assets", "fonts", CARD_FONT), join(site, CARD_FONT));
 
   const server = createPagesServer({ root: site, base: "/" });
   const port = await listen(server);
@@ -459,7 +563,6 @@ async function renderCards() {
   const written = [];
   try {
     for (const domain of ["Network", "Runtime", "Page"]) await browser.send(`${domain}.enable`);
-    await browser.send("Page.bringToFront");
     for (const card of CARDS) {
       await browser.send("Emulation.setDeviceMetricsOverride", {
         width: card.width,
@@ -530,9 +633,15 @@ function frameAt(frames, clock) {
   return found;
 }
 
+/** The last frame whose clock reads the given text. */
+function lastFrameAt(frames, clock) {
+  const found = frames.findLast((frame) => frame.clock === clock);
+  if (!found) throw new Error(`no captured frame shows the clock ${clock}`);
+  return found;
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const count = options.frames ?? CAPTURE_SECONDS * FPS + 1;
   const full = options.frames === undefined;
 
   if (options.cardsOnly) {
@@ -543,8 +652,9 @@ async function main() {
   }
 
   let frames;
+  let introFrames;
   if (options.reuse) {
-    frames = JSON.parse(await readFile(join(WORK, "frames.json"), "utf8")).frames;
+    ({ frames, introFrames } = JSON.parse(await readFile(join(WORK, "frames.json"), "utf8")));
   } else {
     await buildCapture();
     await rm(WORK, { recursive: true, force: true });
@@ -554,14 +664,20 @@ async function main() {
     const port = await listen(server);
     const origin = `http://127.0.0.1:${port}`;
     try {
-      frames = await captureFrames({ origin, count, write: true });
+      ({ introFrames, frames } = await captureFrames({
+        origin,
+        count: options.frames,
+        write: true,
+      }));
       await writeFile(
         join(WORK, "frames.json"),
-        `${JSON.stringify({ fps: FPS, frameMs: FRAME_MS, frames }, null, 1)}\n`,
+        `${JSON.stringify({ fps: FPS, frameMs: FRAME_MS, introFrames, frames }, null, 1)}\n`,
       );
       if (options.verify) {
-        await captureFrames({ origin, count, write: false, expected: frames });
-        console.log(`determinism: ${count} frames identical over two sessions`);
+        await captureFrames({ origin, count: frames.length, write: false, expected: frames });
+        console.log(
+          `determinism: ${frames.length} frames identical over two sessions (the ${introFrames} intro frames and the labels-hidden shots of the stills included)`,
+        );
       }
     } finally {
       server.close();
@@ -570,7 +686,7 @@ async function main() {
 
   if (!full) {
     const clip = join(WORK, "clip.mp4");
-    await encodeVideo(clip, count);
+    await encodeVideo(clip, frames.length);
     const failures = await report([{ file: clip, width: 1920, height: 1080 }]);
     if (failures.length > 0) throw new Error(failures.join("\n"));
     return;
@@ -578,15 +694,20 @@ async function main() {
 
   await mkdir(LINKEDIN, { recursive: true });
   const video = join(LINKEDIN, "rail-breach-1080p.mp4");
-  await encodeVideo(video, count);
-  await encodeGif(TEASER);
+  await encodeVideo(video, frames.length);
+  const gifLast = lastFrameAt(frames, GIF_END_CLOCK).i;
+  await encodeGif(TEASER, GIF_START_FRAME, gifLast - GIF_START_FRAME + 1);
   const outputs = [
     { file: video, width: 1920, height: 1080, check: () => checkVideo(video) },
     { file: TEASER, check: () => checkGif(TEASER) },
   ];
-  for (const { name, clock } of STILLS) {
+  const stillFrames = [
+    ...STILLS.map(({ name, clock }) => ({ name, index: frameAt(frames, clock).i })),
+    { name: INTRO_STILL, index: introFrames / 2 },
+  ];
+  for (const { name, index } of stillFrames) {
     const target = join(WORK, name);
-    await copyFile(join(FRAMES_DIR, `${pad(frameAt(frames, clock).i)}.png`), target);
+    await copyFile(join(FRAMES_DIR, `${pad(index)}.png`), target);
     // The stills are also handed over in the post folder, next to the video and the cards.
     await copyFile(target, join(LINKEDIN, name));
     outputs.push({ file: join(LINKEDIN, name), width: 1920, height: 1080 });
@@ -606,6 +727,12 @@ async function main() {
   }
   const failures = await report(outputs);
   if (failures.length > 0) throw new Error(`budget failed:\n${failures.join("\n")}`);
+
+  // G3 and G4: the stills are only good if the labels stay legible and the board is unchanged.
+  const stills = await checkStills({ workDir: WORK });
+  for (const line of stills.lines) console.log(line);
+  if (stills.failures.length > 0)
+    throw new Error(`stills gate failed:\n${stills.failures.join("\n")}`);
 }
 
 main().catch((error) => {
