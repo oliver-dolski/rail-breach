@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CAPTURE_FRAME_MS, createManualFrames } from "../../src/app/capture";
+import { buildCaptureHook, CAPTURE_FRAME_MS, createManualFrames } from "../../src/app/capture";
 import { startLoop } from "../../src/app/loop";
+import { INTRO_MS } from "../../src/render/intro/pose";
 
 describe("the capture frame clock", () => {
   it("steps exactly 40 ms a frame, so N frames give floor((N - 1) * 40 / 100) ticks", () => {
@@ -72,6 +73,24 @@ describe("the capture frame clock", () => {
     manual.deps.cancel(first);
     manual.frame();
     expect(ran).toBe(10);
+  });
+});
+
+describe("the capture hook", () => {
+  it("tells the script how many frames the intro takes: 4000 ms of 40 ms frames", () => {
+    const hook = buildCaptureHook(createManualFrames(CAPTURE_FRAME_MS), Promise.resolve());
+    expect(hook.introFrames).toBe(100);
+    expect(hook.introFrames).toBe(INTRO_MS / CAPTURE_FRAME_MS);
+    expect(Number.isInteger(hook.introFrames)).toBe(true);
+  });
+
+  it("steps the frames it is built on", () => {
+    const manual = createManualFrames(CAPTURE_FRAME_MS);
+    const hook = buildCaptureHook(manual, Promise.resolve());
+    expect(hook.frames()).toBe(0);
+    manual.deps.request(() => undefined);
+    expect(hook.frame()).toBe(true);
+    expect(hook.frames()).toBe(1);
   });
 });
 

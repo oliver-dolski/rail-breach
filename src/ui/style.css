@@ -1118,6 +1118,29 @@ details.llm > summary:focus-visible {
   gap: var(--space-sm);
 }
 
+/* Skip intro: bottom centre of the stage, only while the intro runs. */
+.intro-skip {
+  position: absolute;
+  bottom: var(--space-md);
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+}
+
+.intro-skip kbd {
+  margin-left: var(--space-xs);
+  padding: 2px 6px;
+  border: 1px solid var(--pill-border);
+  border-radius: var(--radius-control);
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--muted);
+}
+
+.intro-skip:focus-visible {
+  border-color: var(--detection);
+}
+
 .fallback:not([hidden]) ~ .stage-controls,
 .fallback:not([hidden]) ~ .intro-skip {
   display: none;
@@ -1150,6 +1173,11 @@ details.llm > summary:focus-visible {
 
 .pill.ghost {
   background: transparent;
+}
+
+/* While the intro plays the panel is out of reach and dimmed, so no one launches into a paused show. */
+.panel[inert] {
+  opacity: 0.55;
 }
 
 .pill:disabled {

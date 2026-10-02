@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createIntro,
   gateTarget,
+  INTRO_END_TEXT,
   INTRO_MIN_STAGE_PX,
   INTRO_SKIP_TO_MS,
+  INTRO_START_TEXT,
   type IntroConditions,
   shouldPlayIntro,
 } from "../../src/app/intro";
@@ -164,5 +167,81 @@ describe("the gated loop target", () => {
     intro.end();
     gated.advance(2);
     expect(seen).toEqual([2]);
+  });
+});
+
+describe("the intro controls", () => {
+  const html = readFileSync("index.html", "utf8");
+  const css = readFileSync("src/ui/style.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const count = (text: string, needle: string): number => text.split(needle).length - 1;
+  const textOf = (id: string): string => {
+    const m = new RegExp(`<button[^>]*id="${id}"[^>]*>([\\s\\S]*?)</button>`).exec(html);
+    return (m?.[1] ?? "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+  const rule = (selector: string): string => {
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if ((m[1] as string).trim().replace(/\s+/g, " ") === selector) return m[2] as string;
+    }
+    return "";
+  };
+
+  it("has one Skip intro pill with the Esc hint, hidden until the intro runs", () => {
+    expect(count(html, 'id="intro-skip"')).toBe(1);
+    expect(textOf("intro-skip")).toBe("Skip intro Esc");
+    const tag = /<button[^>]*id="intro-skip"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(tag).toMatch(/\bhidden\b/);
+    expect(tag).toMatch(/class="[^"]*\bpill\b[^"]*\bintro-skip\b/);
+    expect(html).toMatch(/<kbd>Esc<\/kbd>/);
+  });
+
+  it("has Replay intro in the stage controls after Follow attack", () => {
+    expect(count(html, 'id="intro-replay"')).toBe(1);
+    expect(textOf("intro-replay")).toBe("Replay intro");
+    const controls = /<div id="stage-controls"[\s\S]*?<\/div>/.exec(html)?.[0] ?? "";
+    expect(controls.indexOf('id="follow-attack"')).toBeGreaterThan(-1);
+    expect(controls.indexOf('id="intro-replay"')).toBeGreaterThan(
+      controls.indexOf('id="follow-attack"'),
+    );
+    expect(controls).toMatch(/<button[^>]*id="intro-replay"[^>]*class="[^"]*\bghost\b/);
+  });
+
+  it("keeps every stage-control label to 14 characters or fewer, one line", () => {
+    for (const label of [textOf("intro-skip"), textOf("follow-attack"), textOf("intro-replay")]) {
+      expect(label.length, label).toBeLessThanOrEqual(14);
+    }
+    expect(rule(".pill")).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("has a polite live region, visually hidden", () => {
+    expect(count(html, 'id="intro-status"')).toBe(1);
+    const tag = /<p[^>]*id="intro-status"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(tag).toMatch(/aria-live="polite"/);
+    expect(tag).toMatch(/visually-hidden/);
+    expect(INTRO_START_TEXT).toBe(
+      "Intro: the five levels of the network fold into the dispatcher map. Press Escape to skip.",
+    );
+    expect(INTRO_END_TEXT).toBe("Intro finished.");
+  });
+
+  it("dims the inert panel to 55 percent and puts the skip pill at the bottom centre", () => {
+    expect(rule(".panel[inert]")).toMatch(/opacity:\s*0\.55/);
+    const skip = rule(".intro-skip");
+    expect(skip).toMatch(/position:\s*absolute/);
+    expect(skip).toMatch(/bottom:\s*var\(--space-md\)/);
+    expect(skip).toMatch(/left:\s*50%/);
+    expect(rule(".intro-skip kbd")).toMatch(/font-size:\s*var\(--fs-label\)/);
+    expect(
+      rule(".fallback:not([hidden]) ~ .stage-controls, .fallback:not([hidden]) ~ .intro-skip"),
+    ).toMatch(/display:\s*none/);
+  });
+
+  it("names its level names in the display size, one line, with the doubled spaces kept", () => {
+    const name = rule(".intro-name");
+    expect(name).toMatch(/font-size:\s*var\(--fs-heading\)/);
+    expect(name).toMatch(/font-weight:\s*600/);
+    expect(name).toMatch(/white-space:\s*pre/);
   });
 });

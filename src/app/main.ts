@@ -43,7 +43,14 @@ import { CAPTURE_FRAME_MS, createManualFrames, installCaptureHook } from "./capt
 import { catalog, entryFor } from "./catalog";
 import { compareSession, defenseCount } from "./compare";
 import { createFollowSwitch } from "./follow";
-import { createIntro, gateTarget, type IntroClock, shouldPlayIntro } from "./intro";
+import {
+  createIntro,
+  gateTarget,
+  INTRO_END_TEXT,
+  INTRO_START_TEXT,
+  type IntroClock,
+  shouldPlayIntro,
+} from "./intro";
 import { keystore } from "./keystore";
 import { type LoopHandle, startLoop } from "./loop";
 import { watchReducedMotion } from "./motion";
@@ -107,9 +114,10 @@ function boot(): void {
     onReset: () => session.reset(),
   });
   // A conduit caption is a click target too: it places the armed defense like a click on the line.
-  const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks, (id) =>
-    defenses.place(id),
-  );
+  const labels = createLabels(document, byId("labels"), layout, viewContext.conduitMarks, (id) => {
+    if (intro?.running()) skipIntro();
+    else defenses.place(id);
+  });
   const mapperContext = buildMapperContext(network, techniques);
   createPicker(document, { ctx: mapperContext, onAction: submit });
   // With no key the LLM mapper hands straight over to the keywords, and it does so on any failure too.
@@ -137,6 +145,8 @@ function boot(): void {
   // The OS setting can change while the show runs; the map and the flashes follow it live.
   const motion = watchReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)"), (on) => {
     reducedMotion = on;
+    if (on) endIntro();
+    syncReplay();
     renderer?.setReducedMotion(on);
     follow.setReducedMotion(on);
     syncFollow();
@@ -173,6 +183,7 @@ function boot(): void {
   /** The map is gone for good: show the still and keep the panel and the simulation running. */
   const dropRenderer = (message: string, reason: string): void => {
     renderer = undefined;
+    endIntro();
     showFallback(fallbackEls, reason, message);
     loop?.resume();
   };
@@ -256,6 +267,10 @@ function boot(): void {
       return nearestConduit(viewContext, at, (PICK_RADIUS_PX * dpr) / fit.scale);
     };
     canvas.addEventListener("click", (event) => {
+      if (intro?.running()) {
+        skipIntro();
+        return;
+      }
       const conduit = conduitAt(event);
       if (conduit !== undefined) defenses.place(conduit);
     });
@@ -296,6 +311,7 @@ function boot(): void {
     );
     watchContext(canvas, {
       onLost() {
+        endIntro();
         loop?.pause();
         renderer?.release();
         guard.lost();
@@ -322,24 +338,86 @@ function boot(): void {
   let seenGeneration = session.generation();
   let gate = createRefreshGate();
 
-  // The intro plays once, on the first load, and only where the GPU path is sound. It holds the
-  // simulation still: the loop target below is gated for as long as it runs.
+  // The intro plays on the first load and on Replay, and only where the GPU path is sound. It
+  // holds the simulation still: the loop target below is gated for as long as it runs.
   const html = document.documentElement;
   // Only the intro=0 flag is ever read from the address (see shouldPlayIntro); the key never is.
   const { search } = window.location;
   const labelsEl = byId("labels");
-  let intro: IntroClock | undefined;
   const namesEl = byId("intro-names");
+  const panelEl = byId("panel");
+  const statusEl = byId("intro-status");
+  const skipButton = byId<HTMLButtonElement>("intro-skip");
+  const replayButton = byId<HTMLButtonElement>("intro-replay");
+  let intro: IntroClock | undefined;
+  /** True from the start of an intro until finishIntro has put the page back. */
+  let introShown = false;
+  /** True once the layers are flat and the board is cross-fading in: the panel is back by then. */
+  let introFading = false;
   let levels: ReturnType<typeof introLevels> = [];
-  let levelNames: HTMLSpanElement[] = [];
+  const levelNames: HTMLSpanElement[] = INTRO_LEVEL_NAMES.map((text) => {
+    const el = document.createElement("span");
+    el.className = "intro-name";
+    el.textContent = text;
+    namesEl.append(el);
+    return el;
+  });
   /** Name widths in CSS pixels, measured once the display face is in. */
   let nameWidths: number[] = [];
-  /** Puts the page back to normal: labels shown, intro marked done. Safe to call twice. */
+  void document.fonts.ready.then(() => {
+    nameWidths = [];
+  });
+
+  /** Whether an intro could play now, leaving out whether it already has (Replay asks this). */
+  const canPlayIntro = (): boolean =>
+    shouldPlayIntro({
+      reducedMotion,
+      search,
+      tier: renderer?.tier(),
+      fallback: renderer === undefined,
+      stageWidthCss: canvas.clientWidth,
+      firstLoad: true,
+    });
+  /** Replay intro is shown only where the intro could play. */
+  const syncReplay = (): void => {
+    replayButton.hidden = !canPlayIntro();
+  };
+  /** The viewer may use the panel again: the layers are flat and the board is coming in. */
+  const releasePanel = (): void => {
+    if (introFading) return;
+    introFading = true;
+    panelEl.inert = false;
+    skipButton.hidden = true;
+    for (const el of levelNames) el.style.opacity = "0";
+  };
+  /** Puts the page back to normal: labels, panel and controls as before. Safe to call twice. */
   const finishIntro = (): void => {
     intro?.end();
+    if (!introShown) return;
+    introShown = false;
+    releasePanel();
     labelsEl.style.opacity = "";
-    for (const el of levelNames) el.style.opacity = "0";
     html.setAttribute("data-intro", "done");
+    setText(statusEl, INTRO_END_TEXT);
+  };
+  /** An error, a lost context or a weak GPU: the board is shown at once. */
+  const endIntro = (): void => {
+    if (introShown) finishIntro();
+    syncReplay();
+  };
+  /** Begins an intro on the show as it stands: the first load, or Replay intro. */
+  const startIntro = (): void => {
+    intro = createIntro(INTRO_MS);
+    introShown = true;
+    introFading = false;
+    camera.reset();
+    levels = levels.length > 0 ? levels : introLevels(network, layout);
+    labelsEl.style.opacity = "0";
+    panelEl.inert = true;
+    skipButton.hidden = false;
+    html.setAttribute("data-intro", "running");
+    html.setAttribute("data-intro-played", "");
+    setText(statusEl, INTRO_START_TEXT);
   };
   /**
    * Puts each level name beside its projected layer, in one column at the right of the stack. A
@@ -365,41 +443,37 @@ function boot(): void {
       el.style.opacity = String(alpha);
     });
   };
-  const endIntro = (): void => {
-    if (intro?.running()) finishIntro();
-  };
-  if (
-    shouldPlayIntro({
-      reducedMotion,
-      search,
-      tier: renderer?.tier(),
-      fallback: renderer === undefined,
-      stageWidthCss: canvas.clientWidth,
-      firstLoad: true,
-    })
-  ) {
-    intro = createIntro(INTRO_MS);
+
+  // Skip: the pill, a click on the map or on a conduit caption, and Escape, Space or Enter.
+  const skipIntro = (): void => intro?.skip();
+  skipButton.addEventListener("click", skipIntro);
+  document.addEventListener("keydown", (event) => {
+    if (intro?.running() !== true) return;
+    if (event.key === "Escape") {
+      skipIntro();
+    } else if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      skipIntro();
+    }
+  });
+
+  if (canPlayIntro()) startIntro();
+  else html.setAttribute("data-intro", "off");
+  syncReplay();
+  // The stage width is one of the conditions too: a stage made too narrow loses Replay intro.
+  if (renderer) new ResizeObserver(syncReplay).observe(canvas);
+
+  /** Clears everything the last run of the show left on screen, for a restart, a new scenario or Replay. */
+  const clearShow = (): void => {
+    log.reset();
+    ring.clear();
+    flashes.clear();
+    trail.clear();
     camera.reset();
-    levels = introLevels(network, layout);
-    void document.fonts.ready.then(() => {
-      nameWidths = [];
-    });
-    levelNames = INTRO_LEVEL_NAMES.map((text) => {
-      const el = document.createElement("span");
-      el.className = "intro-name";
-      el.textContent = text;
-      namesEl.append(el);
-      return el;
-    });
-    labelsEl.style.opacity = "0";
-    html.setAttribute("data-intro", "running");
-    html.setAttribute("data-intro-played", "");
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") intro?.skip();
-    });
-  } else {
-    html.setAttribute("data-intro", "off");
-  }
+    timeline.reset();
+    compare.reset();
+    lastGood = undefined;
+  };
 
   /** Starts another scenario from its own recording and clears everything the last one left on screen. */
   const switchTo = (id: string): void =>
@@ -416,14 +490,7 @@ function boot(): void {
         viewContext = createViewContext(network, session.index, layout);
         seenGeneration = session.generation();
         gate = createRefreshGate();
-        log.reset();
-        ring.clear();
-        flashes.clear();
-        trail.clear();
-        camera.reset();
-        timeline.reset();
-        compare.reset();
-        lastGood = undefined;
+        clearShow();
         selector.show(wanted);
       },
       restore: (running) => selector.show(running),
@@ -449,14 +516,7 @@ function boot(): void {
         if (session.world() === before) break;
         if (session.generation() !== seenGeneration) {
           seenGeneration = session.generation();
-          log.reset();
-          ring.clear();
-          flashes.clear();
-          trail.clear();
-          camera.reset();
-          timeline.reset();
-          compare.reset();
-          lastGood = undefined;
+          clearShow();
         }
         const events = session.drainEvents();
         log.ingest(events, session.scenario.startTick);
@@ -476,7 +536,18 @@ function boot(): void {
     },
   };
 
-  const target = intro ? gateTarget(sim, intro) : sim;
+  // The simulation stands still while an intro runs, whichever intro is current.
+  const target = gateTarget(sim, { running: () => intro?.running() === true });
+
+  replayButton.addEventListener("click", () => {
+    if (intro?.running() || !canPlayIntro()) return;
+    // The whole show starts over under the intro, as for Start over, and nothing of the last run stays.
+    session.reset();
+    seenGeneration = session.generation();
+    gate = createRefreshGate();
+    clearShow();
+    startIntro();
+  });
 
   const render = (frameAlpha: number, dtMs: number): void => {
     // A GPU that cannot keep up steps down to plain glow, once; the simulation never hears of it.
@@ -484,9 +555,10 @@ function boot(): void {
       document.documentElement.setAttribute("data-render-tier", renderer.tier());
       endIntro();
     }
-    if (intro?.running()) {
-      intro.feed(dtMs);
-      if (!intro.running()) finishIntro();
+    if (intro && introShown) {
+      if (intro.running()) intro.feed(dtMs);
+      if (!intro.running() || renderer === undefined) finishIntro();
+      else if (intro.phase() === "crossfade") releasePanel();
     }
     const introOn = intro?.running() === true;
     // While the intro runs the world is the first one and stands still: no interpolation.
@@ -521,7 +593,7 @@ function boot(): void {
           placeNames(boxes, pose.namesAlpha);
         } catch {
           // Any trouble in the intro path ends it; the board is drawn at once.
-          finishIntro();
+          endIntro();
           renderer.draw(view, ring);
         }
       } else {

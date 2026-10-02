@@ -83,7 +83,7 @@ export function shouldPlayIntro(c: IntroConditions): boolean {
 }
 
 /** The loop target with the simulation held still for as long as the intro runs. */
-export function gateTarget(target: LoopTarget, intro: IntroClock): LoopTarget {
+export function gateTarget(target: LoopTarget, intro: Pick<IntroClock, "running">): LoopTarget {
   return {
     advance(ticks) {
       if (intro.running()) return;

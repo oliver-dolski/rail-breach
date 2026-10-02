@@ -35,6 +35,10 @@
           />
           <figcaption id="fallback-message"></figcaption>
         </figure>
+        <button id="intro-skip" class="pill intro-skip" type="button" hidden>
+          Skip intro <kbd>Esc</kbd>
+        </button>
+        <p id="intro-status" class="visually-hidden" aria-live="polite"></p>
         <div class="view-switch">
           <fieldset id="view-mode" class="segmented" aria-label="Which picture of the line to show">
             <button type="button" data-mode="ground-truth" aria-pressed="true">Ground truth</button>
@@ -44,6 +48,7 @@
         </div>
         <div id="stage-controls" class="stage-controls">
           <button id="follow-attack" class="pill" type="button" aria-pressed="true">Follow attack</button>
+          <button id="intro-replay" class="pill ghost" type="button" hidden>Replay intro</button>
         </div>
       </main>
 

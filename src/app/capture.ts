@@ -1,3 +1,4 @@
+import { INTRO_MS } from "../render/intro/pose";
 import { loadPanelFonts } from "../ui/fonts";
 import type { LoopDeps } from "./loop";
 
@@ -61,6 +62,11 @@ export function createManualFrames(frameMs: number): ManualFrames {
 export interface CaptureHook {
   frame(): boolean;
   frames(): number;
+  /**
+   * Frames the intro takes on the 40 ms frame clock: the script offsets its windows by it. The
+   * intro is frame-exact, so these are the first frames of a capture.
+   */
+  introFrames: number;
   /** Resolves once the page fonts are loaded, so the first captured frame has its final text. */
   ready: Promise<void>;
 }
@@ -71,14 +77,23 @@ declare global {
   }
 }
 
-/** Exposes the manual frames to the capture script and marks the page so the CSS stops its own motion. */
-export function installCaptureHook(manual: ManualFrames): void {
-  window.__railBreachCapture = {
+/** The hook the script sees, over a manual frame clock; `ready` says when the page text is final. */
+export function buildCaptureHook(manual: ManualFrames, ready: Promise<void>): CaptureHook {
+  return {
     frame: () => manual.frame(),
     frames: () => manual.frames(),
-    ready: loadPanelFonts(document.fonts)
+    introFrames: INTRO_MS / CAPTURE_FRAME_MS,
+    ready,
+  };
+}
+
+/** Exposes the manual frames to the capture script and marks the page so the CSS stops its own motion. */
+export function installCaptureHook(manual: ManualFrames): void {
+  window.__railBreachCapture = buildCaptureHook(
+    manual,
+    loadPanelFonts(document.fonts)
       .then(() => document.fonts.ready)
       .then(() => undefined),
-  };
+  );
   document.documentElement.dataset.capture = "";
 }
