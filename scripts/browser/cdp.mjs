@@ -66,6 +66,14 @@ export async function launchBrowser({ width = 1600, height = 950 } = {}) {
       `--user-data-dir=${profile}`,
       "--no-first-run",
       "--no-default-browser-check",
+      // A new profile in Edge signs in with the Windows account on its own, syncs the owner's
+      // extensions and opens their welcome pages and a sync dialog as tabs of the same window.
+      // The page under test then stops being the visible tab: document.visibilityState turns
+      // "hidden" and requestAnimationFrame stops, which hung long captures at random. A bare
+      // browser has no account, no extension and no extra tab.
+      "--disable-sync",
+      "--disable-extensions",
+      "--disable-component-extensions-with-background-pages",
       "--disable-features=CalculateNativeWinOcclusion",
       "--disable-renderer-backgrounding",
       "--disable-background-timer-throttling",
@@ -106,10 +114,26 @@ export async function launchBrowser({ width = 1600, height = 950 } = {}) {
     }
   });
 
-  const send = (method, params = {}) =>
+  // A call that never answers would hang a run that has no one watching it, so each one has a
+  // limit: far above the slowest real call (a 1080p screenshot takes under a second), well
+  // below anything a person would wait for.
+  const send = (method, params = {}, timeoutMs = 120_000) =>
     new Promise((done, fail) => {
       const id = ++next;
-      pending.set(id, { done, fail });
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        fail(new Error(`${method} got no answer in ${timeoutMs / 1000} s`));
+      }, timeoutMs);
+      pending.set(id, {
+        done: (value) => {
+          clearTimeout(timer);
+          done(value);
+        },
+        fail: (error) => {
+          clearTimeout(timer);
+          fail(error);
+        },
+      });
       socket.send(JSON.stringify({ id, method, params }));
     });
 
