@@ -4,12 +4,22 @@
 // visible window when a human wants to watch.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+// One profile directory kept across runs, never a new one per run. On the first start of a
+// profile Edge checks whether the Windows account has a blank password by trying to log on
+// with an empty one, and keeps the answer in the profile. A new profile on every run turned
+// each start into a failed logon (event 4625), and ten of them lock the owner's account.
+// Kept, the profile fails that check at most once per password change.
+const PROFILE = join(process.env.LOCALAPPDATA ?? tmpdir(), "rail-breach", "browser-profile");
+// The site data lives in the Default subfolder: removed before each start, so every run still
+// begins with empty storage and an empty cache, as captures and smoke runs expect.
+const SITE_DATA = join(PROFILE, "Default");
 
 function browserPath() {
   const fromEnv = process.env.RAIL_BREACH_BROWSER;
@@ -51,13 +61,31 @@ async function pageTarget(port) {
   throw new Error("no page target appeared");
 }
 
+async function removeSiteData() {
+  // Edge releases profile files late, so a few retries before giving up.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      await rm(SITE_DATA, { recursive: true, force: true });
+      return;
+    } catch {
+      await sleep(500);
+    }
+  }
+  throw new Error(
+    `could not clear the browser site data in ${SITE_DATA}; is a test browser still running?`,
+  );
+}
+
 /**
- * Start a fresh browser profile and attach to its first page.
+ * Start the browser on the kept profile with its site data cleared, and attach to its first page.
  * @param {{ width?: number, height?: number }} [size]
  */
 export async function launchBrowser({ width = 1600, height = 950 } = {}) {
   const exe = browserPath();
-  const profile = await mkdtemp(join(tmpdir(), "rail-breach-browser-"));
+  const profile = PROFILE;
+  await mkdir(profile, { recursive: true });
+  await rm(join(profile, "DevToolsActivePort"), { force: true });
+  await removeSiteData();
   const child = spawn(
     exe,
     [
@@ -99,7 +127,6 @@ export async function launchBrowser({ width = 1600, height = 950 } = {}) {
   } catch (error) {
     child.kill();
     await exited;
-    await rm(profile, { recursive: true, force: true }).catch(() => {});
     throw error;
   }
   socket.addEventListener("message", (message) => {
@@ -164,16 +191,6 @@ export async function launchBrowser({ width = 1600, height = 950 } = {}) {
     const timeout = sleep(10_000).then(() => "timeout");
     if ((await Promise.race([exited, timeout])) === "timeout") child.kill();
     await exited;
-    // Edge releases profile files late, so a few retries before giving up.
-    for (let attempt = 0; attempt < 8; attempt++) {
-      try {
-        await rm(profile, { recursive: true, force: true });
-        return;
-      } catch {
-        await sleep(500);
-      }
-    }
-    console.warn(`left behind the temporary browser profile ${profile}`);
   }
 
   return { send, evaluate, events, screenshot, close };
