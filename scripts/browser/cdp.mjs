@@ -1,6 +1,7 @@
 // Minimal Chrome DevTools Protocol driver for Edge or Chrome, Node built-ins only.
-// The window is headed on purpose: the map needs the real GPU, and a headless browser falls
-// back to a software WebGL2 that is slow enough to change what the simulation shows.
+// The browser runs headless (--headless=new) by default, so no window ever opens on the owner's
+// desktop. New headless keeps the real GPU through ANGLE/D3D11; set RAIL_BREACH_HEADED=1 to get a
+// visible window when a human wants to watch.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -61,6 +62,7 @@ export async function launchBrowser({ width = 1600, height = 950 } = {}) {
     exe,
     [
       "--remote-debugging-port=0",
+      ...(process.env.RAIL_BREACH_HEADED === "1" ? [] : ["--headless=new"]),
       `--user-data-dir=${profile}`,
       "--no-first-run",
       "--no-default-browser-check",
