@@ -83,6 +83,75 @@ describe("README structure", () => {
   });
 });
 
+describe("README hero", () => {
+  const lines = readme.split("\n").filter((line) => line.trim() !== "");
+  const TAGLINE =
+    "Watch an ATT&CK for ICS attack spread across a fictional railway, then stop it with segmentation.";
+  const LIVE = "Live demo: <https://oliver-dolski.github.io/rail-breach/> (no key, no install).";
+  const CAPTION =
+    "The phishing scenario from the intro to the first halted train (00:34), at 2x real speed. Recorded from the app by npm run media:capture.";
+
+  it("opens with the title, the two badges, the tagline, the live link, the teaser and its caption, in that order", () => {
+    expect(lines[0]).toBe("# Rail Breach");
+    expect(lines[1]).toMatch(/^\[!\[CI\]\(.+\)\]\(.+\)$/);
+    expect(lines[2]).toMatch(/^\[!\[License\]\(.+\)\]\(LICENSE\)$/);
+    expect(lines[3]).toBe(TAGLINE);
+    expect(lines[4]).toBe(LIVE);
+    expect(lines[5]).toMatch(/^!\[[^\]]+\]\(docs\/media\/teaser\.gif\)$/);
+    expect(lines[6]).toBe(CAPTION);
+    expect(lines[7]).toMatch(/^Rail Breach is a live, deterministic simulation/);
+  });
+
+  it("describes in the picture's alt text the fold, the trail and the stopped trains", () => {
+    const alt = /^!\[([^\]]+)\]/.exec(lines[5] ?? "")?.[1] ?? "";
+    expect(alt).toMatch(/fold/i);
+    expect(alt).toMatch(/trail/i);
+    expect(alt).toMatch(/trains? (stand|stop|halt)/i);
+  });
+
+  it("states the speed and the clock reading the teaser ends on", () => {
+    expect(lines[6]).toContain("2x real speed");
+    expect(lines[6]).toContain("(00:34)");
+  });
+
+  it("does not keep the old caption", () => {
+    expect(flat).not.toContain("from 00:06 to 00:38");
+  });
+});
+
+describe("README what you see", () => {
+  const section = /^## What you see$([\s\S]*?)^## /m.exec(readme)?.[1] ?? "";
+  const body = section.replace(/\s+/g, " ");
+
+  it("calls the zones translucent panels", () => {
+    expect(body).toMatch(/translucent panels/i);
+  });
+
+  it("describes the trail", () => {
+    expect(body).toMatch(/trail/i);
+  });
+
+  it("describes the follow camera and the ways to turn it off", () => {
+    expect(body).toMatch(/Follow attack/);
+    expect(body).toMatch(/wheel/i);
+    expect(body).toMatch(/drag/i);
+    expect(body).toMatch(/reduced motion/i);
+  });
+
+  it("describes the intro, how to skip it and when it does not play", () => {
+    expect(body).toMatch(/intro/i);
+    expect(body).toMatch(/five Purdue levels/);
+    expect(body).toMatch(/Escape/);
+    expect(body).toMatch(/click/i);
+    expect(body).toMatch(/reduced motion/i);
+  });
+
+  it("keeps the three timings and says the session clock starts when the intro ends", () => {
+    for (const mark of ["00:11", "00:18", "00:32"]) expect(body, mark).toContain(mark);
+    expect(body).toMatch(/clock starts when the intro ends/);
+  });
+});
+
 describe("README wording rules", () => {
   it("describes the overrun as contained by the overlap", () => {
     expect(flat).toContain("contained by the overlap");

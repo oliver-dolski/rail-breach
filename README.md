@@ -3,6 +3,14 @@
 [![CI](https://github.com/oliver-dolski/rail-breach/actions/workflows/deploy.yml/badge.svg)](https://github.com/oliver-dolski/rail-breach/actions/workflows/deploy.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
+Watch an ATT&CK for ICS attack spread across a fictional railway, then stop it with segmentation.
+
+Live demo: <https://oliver-dolski.github.io/rail-breach/> (no key, no install).
+
+![The phishing scenario: the five levels of the network fold into the dispatcher map, the intruder's trail lights up the links it crosses, the signals drop to stop and the first trains stand.](docs/media/teaser.gif)
+
+The phishing scenario from the intro to the first halted train (00:34), at 2x real speed. Recorded from the app by npm run media:capture.
+
 Rail Breach is a live, deterministic simulation of an attack on a fictional
 mainline railway, built from MITRE ATT&CK for ICS v19.2 techniques. It runs in
 the browser with no backend. A rule engine moves the intruder from machine to
@@ -12,26 +20,25 @@ answers the way a fail-safe interlocking does: signals go to stop, routes are
 refused, trains stand. You can also place defenses and watch the same attack
 stop at a zone boundary.
 
-Live demo: <https://oliver-dolski.github.io/rail-breach/> (no key, no install).
-
-![The phishing scenario: the intruder's traffic crosses the network, the signals drop to stop and the first trains stand.](docs/media/teaser.gif)
-
-The phishing scenario from 00:06 to 00:38 of the session, shown at 2x real
-speed. It is a recording of the app, rebuilt byte for byte by `npm run media:capture`.
-
 ## What you see
 
 A schematic dispatcher map on a dark ground, with the side panel to its right.
 
-- **Network zones and conduits.** Boxes are zones (Corporate IT, DMZ, Control
-  centre, one per interlocking, Trackside, and the untrusted Internet and vendor
-  access). The thick lines between them are conduits, in the sense of IEC 62443.
+- **Network zones and conduits.** Translucent panels with a lit edge are zones
+  (Corporate IT, DMZ, Control centre, one per interlocking, Trackside, and the
+  untrusted Internet and vendor access). A panel takes the attacker's colour
+  while the intruder holds a machine in it, and the colour of an impact once a
+  machine in it has lost control. The thick lines between zones are conduits, in
+  the sense of IEC 62443.
 - **Machines.** A ring is a normal machine. A diamond means the intruder holds
   it. A triangle is degraded. A cross is a machine whose operators lost control.
   Colour is never the only cue: each state has its own shape.
 - **Particles.** Each glowing dot is a packet. The intruder's traffic is
   magenta and travels along the real links of the topology, at the link's
   latency.
+- **The trail.** Every link the intruder's traffic has crossed stays lit in
+  magenta until the session restarts, so the whole chain of the attack can be
+  read in a single frame. A link that is crossed again lights up once more.
 - **The railway.** Stations on the main line, a branch, lineside signals
   (red for stop, amber for caution, green for proceed) and trains that
   accelerate and brake with real distances.
@@ -44,12 +51,21 @@ A schematic dispatcher map on a dark ground, with the side panel to its right.
   route the interlocking refuses and every sensor alert is written down in words.
 - **Two-lane timeline.** Attacker and detection on one axis. The shaded gap is
   the time the intruder went unnoticed.
+- **Camera.** The map leans in on the zone where the attack is happening and
+  pulls back to the whole board once a train stands. Follow attack, a button over
+  the map, switches it off, and so does turning the wheel or dragging the map. With
+  reduced motion the camera stays on the whole board.
+- **Intro.** The first load opens with four seconds in which the five Purdue
+  levels of the network hang apart as layers and fold into the map. Escape, a
+  click or the Skip intro pill skips it, and Replay intro plays it again. It is
+  not played with reduced motion or on a very small stage.
 
-On load, the phishing scenario runs on a timeline you can check against the
-clock in the panel: the first IDS alert at 00:11, the signals of the routes not
-yet entered at stop at 00:18, the first train brought to a stand at 00:32. A
-train needs about half a minute to stop from line speed at the service braking
-rate, so that is the floor.
+After the intro, the phishing scenario runs on a timeline you can check against
+the clock in the panel: the first IDS alert at 00:11, the signals of the routes
+not yet entered at stop at 00:18, the first train brought to a stand at 00:32.
+The clock starts when the intro ends, so these times hold whether the intro is
+watched or skipped. A train needs about half a minute to stop from line speed at
+the service braking rate, so that is the floor.
 
 ## Scenarios
 
@@ -185,7 +201,7 @@ npm run lint                 # also: lint:core
 npm run build                # production build into dist/
 npm run smoke                # serves dist/ the way Pages does and drives a fresh browser
 npm run scan:history         # hygiene scan of the whole git history
-npm run media:capture        # rebuilds the GIF and cards (Windows, Edge, ffmpeg)
+npm run media:capture        # rebuilds the GIF, stills and cards (Windows, Edge, ffmpeg)
 ```
 
 `npm run readme:techniques` rewrites the generated table above, and
