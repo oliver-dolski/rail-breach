@@ -21,5 +21,9 @@ export default defineConfig({
     // Node, not jsdom: the core must stay DOM-free and a DOM environment would hide leaks.
     environment: "node",
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    // The slowest test takes about 2 s alone (a whole scenario played through) and the ones that
+    // start a child process or a server about 0.1 s, but with every worker busy in a full run each
+    // of them has gone past the default 5 s. The limit is there to catch a hang, not to time them.
+    testTimeout: 20_000,
   },
 });
