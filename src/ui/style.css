@@ -961,6 +961,14 @@ details.llm > summary:focus-visible {
   scroll-behavior: auto;
 }
 
+/*
+ * The browser dithers a gradient, and a card re-rastered between two frames can come back with
+ * a different dither: the same page, one level off in tens of thousands of panel pixels. The
+ * capture fills the cards with the middle of their gradient, which has nothing to dither.
+ */
+:root[data-capture] .card {
+  background: #0f1520;
+}
 @media (prefers-reduced-motion: reduce) {
   .chain span.tone-running {
     animation: none;

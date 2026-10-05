@@ -215,6 +215,22 @@ describe("the panel as cards", () => {
     expect(css).toMatch(/scrollbar-width:\s*thin/);
     expect(css).not.toMatch(/backdrop-filter/);
   });
+
+  it("fills the cards with one solid colour inside their gradient in the capture build, so no dither can change between frames", () => {
+    const fill = /:root\[data-capture\] \.card\s*\{\s*background:\s*#([0-9a-f]{6});\s*\}/.exec(
+      css,
+    )?.[1];
+    expect(fill).toBeDefined();
+    const top = /--card-bg-top:\s*#([0-9a-f]{6})/.exec(css)?.[1] ?? "";
+    const bottom = /--card-bg-bottom:\s*#([0-9a-f]{6})/.exec(css)?.[1] ?? "";
+    for (const i of [0, 2, 4]) {
+      const [f, t, b] = [fill ?? "", top, bottom].map((hex) =>
+        Number.parseInt(hex.slice(i, i + 2), 16),
+      ) as [number, number, number];
+      expect(f).toBeGreaterThanOrEqual(Math.min(t, b));
+      expect(f).toBeLessThanOrEqual(Math.max(t, b));
+    }
+  });
 });
 
 /** A document with a few <details> elements, the shape openCard reads. */
