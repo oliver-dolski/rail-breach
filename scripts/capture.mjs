@@ -4,7 +4,7 @@
 //        (npm run media:capture)
 //
 // A plain run makes the whole set: the 1080p video, the README teaser GIF, the three stills (the
-// intro, 00:20 and 00:34), the LinkedIn card and the GitHub social preview (the card template is
+// intro, 00:20 and 00:34) and their README row, the LinkedIn card and the GitHub social preview (the card template is
 // scripts/capture/card.html), and then runs the stills gates of scripts/check-stills.mjs.
 // --frames N captures only N frames and makes just a clip (a quick check of the pipeline).
 // --reuse-frames skips the capture and encodes again from scratch/capture/frames, which is how
@@ -35,8 +35,9 @@ const WORK = join(ROOT, "scratch", "capture");
 const FRAMES_DIR = join(WORK, "frames");
 /** Post drafts and their assets: ignored by git, rebuilt by this script. */
 const LINKEDIN = join(ROOT, "_linkedin");
-/** The only media file that is tracked: the README teaser, outside public/ so Pages never serves it. */
-const TEASER = join(ROOT, "docs", "media", "teaser.gif");
+/** The tracked media: the README teaser and its row of stills, outside public/ so Pages never serves them. */
+const MEDIA = join(ROOT, "docs", "media");
+const TEASER = join(MEDIA, "teaser.gif");
 
 /** Where the app lives in the capture build, the same subpath as on Pages. */
 const BASE = "/rail-breach/";
@@ -107,6 +108,12 @@ const STILLS = [
 ];
 /** The still of the intro, half way through it: the levels mid-fall. Located by frame, not by clock. */
 const INTRO_STILL = "still-intro.png";
+/** The row of stills under the README teaser, left to right: the fold, the attack, the halt. */
+const README_STILLS = [INTRO_STILL, "still-attack.png", "still-halt.png"];
+/** Width of a README still: three side by side fill the README column, a click opens it larger. */
+const README_STILL_WIDTH = 640;
+/** A README still stays in history for good, so each one is capped. */
+const README_STILL_MAX_BYTES = 400 * 1024;
 /** The still the cards show as their picture: the whole board with the full trail and every signal at stop. */
 const CARD_STILL = "still-halt.png";
 /** The display face, copied next to the card template so the card title uses the same file as the page. */
@@ -711,6 +718,28 @@ async function main() {
     // The stills are also handed over in the post folder, next to the video and the cards.
     await copyFile(target, join(LINKEDIN, name));
     outputs.push({ file: join(LINKEDIN, name), width: 1920, height: 1080 });
+  }
+  for (const name of README_STILLS) {
+    const file = join(MEDIA, name);
+    await ffmpeg([
+      "-i",
+      join(WORK, name),
+      "-vf",
+      `scale=${README_STILL_WIDTH}:-1:flags=lanczos`,
+      ...REPRODUCIBLE,
+      file,
+    ]);
+    outputs.push({
+      file,
+      width: README_STILL_WIDTH,
+      height: (README_STILL_WIDTH * 9) / 16,
+      check: async () => {
+        const size = (await readFile(file)).length;
+        return size > README_STILL_MAX_BYTES
+          ? [`${relative(ROOT, file)} is ${size} bytes, over ${README_STILL_MAX_BYTES}`]
+          : [];
+      },
+    });
   }
   for (const card of await renderCards()) {
     outputs.push({
