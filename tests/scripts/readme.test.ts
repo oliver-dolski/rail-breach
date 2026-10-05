@@ -99,7 +99,25 @@ describe("README hero", () => {
     expect(lines[4]).toBe(LIVE);
     expect(lines[5]).toMatch(/^!\[[^\]]+\]\(docs\/media\/teaser\.gif\)$/);
     expect(lines[6]).toBe(CAPTION);
-    expect(lines[7]).toMatch(/^Rail Breach is a live, deterministic simulation/);
+    expect(lines[7]).toMatch(/^<p><img /);
+    expect(lines[8]).toMatch(/^Rail Breach is a live, deterministic simulation/);
+  });
+
+  it("puts the three tracked stills under the teaser, in story order, each with alt text", () => {
+    const stills = [...(lines[7] ?? "").matchAll(/<img src="([^"]+)" width="32%" alt="([^"]+)">/g)];
+    expect(stills.map((m) => m[1])).toEqual([
+      "docs/media/still-intro.png",
+      "docs/media/still-attack.png",
+      "docs/media/still-halt.png",
+    ]);
+    const tracked = execFileSync("git", ["ls-files", "docs/media"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    for (const [, src] of stills) expect(tracked, src).toContain(src);
+    expect(stills[0]?.[2]).toMatch(/Purdue levels/);
+    expect(stills[1]?.[2]).toMatch(/^00:20/);
+    expect(stills[2]?.[2]).toMatch(/^00:34/);
   });
 
   it("describes in the picture's alt text the fold, the trail and the stopped trains", () => {
@@ -116,6 +134,16 @@ describe("README hero", () => {
 
   it("does not keep the old caption", () => {
     expect(flat).not.toContain("from 00:06 to 00:38");
+  });
+});
+
+describe("README scenarios", () => {
+  it("draws the phishing chain as a Mermaid diagram with the scenario's techniques in order", () => {
+    const section = /^## Scenarios$([\s\S]*?)^## /m.exec(readme)?.[1] ?? "";
+    const diagram = /```mermaid\n([\s\S]*?)```/.exec(section)?.[1] ?? "";
+    expect(diagram).toMatch(/^flowchart LR/);
+    const techniques = [...diagram.matchAll(/T\d{4}/g)].map((m) => m[0]);
+    expect(techniques).toEqual(["T0865", "T0840", "T0886", "T0886", "T0886"]);
   });
 });
 

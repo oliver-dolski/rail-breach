@@ -11,6 +11,8 @@ Live demo: <https://oliver-dolski.github.io/rail-breach/> (no key, no install).
 
 The phishing scenario from the intro to the first halted train (00:34), at 2x real speed. Recorded from the app by npm run media:capture.
 
+<p><img src="docs/media/still-intro.png" width="32%" alt="The intro: the five Purdue levels of the network hang apart as layers before they fold into the map."> <img src="docs/media/still-attack.png" width="32%" alt="00:20: the operators have lost control of the dispatcher console and the traffic management server, and every signal is at stop."> <img src="docs/media/still-halt.png" width="32%" alt="00:34: the whole board with the full attack trail, three trains standing and the safety invariant held."></p>
+
 Rail Breach is a live, deterministic simulation of an attack on a fictional
 mainline railway, built from MITRE ATT&CK for ICS v19.2 techniques. It runs in
 the browser with no backend. A rule engine moves the intruder from machine to
@@ -78,6 +80,18 @@ the service braking rate, so that is the floor.
 The scenario picker is at the top of the panel. Each scenario has a fixed seed,
 chosen so that every random roll in its chain goes the attacker's way, and a
 test pins the story.
+
+The phishing chain, machine by machine:
+
+```mermaid
+flowchart LR
+  mail["Phishing mail"] -- "T0865 Spearphishing Attachment" --> ws["Dispatcher office workstation<br/>Corporate IT"]
+  ws -- "T0840 Network Connection Enumeration" --> ws
+  ws -- "T0886 Remote Services" --> relay["DMZ relay<br/>DMZ"]
+  relay -- "T0886" --> console["Dispatcher console<br/>Control centre"]
+  console -- "T0886" --> tms["Traffic management server<br/>Control centre"]
+  tms --> rail["Command channel lost<br/>routes refused, signals at stop, trains stand"]
+```
 
 ## Try your own
 
