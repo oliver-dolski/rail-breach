@@ -12,9 +12,13 @@ if [ -n "$forced" ]; then
   exit 1
 fi
 
+# A global hook may call this repository hook back once it is done; the marker
+# ends the chain there instead of handing over to the global hook again.
+[ -n "$RAIL_BREACH_HOOK_CHAINED" ] && exit 0
+
 global_dir=$(git config --global --get core.hooksPath)
 [ -n "$global_dir" ] || exit 0
 global_hook="$global_dir/pre-commit"
 [ -f "$global_hook" ] || exit 0
 [ "$(cd "$global_dir" 2>/dev/null && pwd)" = "$(cd .githooks && pwd)" ] && exit 0
-exec "$global_hook" "$@"
+RAIL_BREACH_HOOK_CHAINED=1 exec "$global_hook" "$@"
